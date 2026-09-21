@@ -6,6 +6,7 @@ import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
 import { chunk, statsLine, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
+import { fetchContext, userNames } from "./thread.js";
 import type { TurnRunner } from "./turn.js";
 
 const PROGRESS_INTERVAL_MS = 2000;
@@ -132,6 +133,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
   const botUserId = auth.user_id ?? "";
   const botName = auth.user ?? "bot";
   const mentionPattern = new RegExp(`<@${botUserId}>`, "g");
+  const nameOf = userNames(app.client);
 
   const inflight = new InflightMarker(config.stateDir);
   const orphan = inflight.take();
@@ -192,7 +194,18 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
 
     const depth = runner.depth;
     const startedAt = Date.now();
-    console.log(`[mention] ${mention.user} in ${mention.channel} thread ${threadTs} (queue ${depth}): ${text.slice(0, 120)}`);
+    let context = { text: "", count: 0 };
+    try {
+      context = await fetchContext(client, mention, nameOf);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      const where = mention.thread_ts ? "thread" : "channel";
+      console.warn(`[context] could not read the ${where}: ${message}`);
+      context.text = `(The ${where} this was posted in could not be read: ${message}. Ask for what you need rather than guessing.)`;
+    }
+    console.log(
+      `[mention] ${mention.user} in ${mention.channel} thread ${threadTs} (queue ${depth}, ${context.count} earlier): ${text.slice(0, 120)}`,
+    );
     await react("eyes");
 
     let activity: Activity =
@@ -218,6 +231,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
         requester: mention.user,
         origin: `Slack #${mention.channel} thread ${threadTs}`,
         text,
+        context: context.text,
         onEvent: (agentEvent) => {
           if (agentEvent.type === "tool") toolCalls += 1;
           if (agentEvent.type === "tool" || agentEvent.type === "phase") activity = describeActivity(agentEvent);

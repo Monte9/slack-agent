@@ -17,6 +17,11 @@ backed by your own `claude login`. The core does not care which runtime answers.
   it. `@bot new` starts over. `@bot status` prints the context the session now carries per request,
   so you can see when `new` is due, and the id so you can resume the same session from a terminal
   after stopping the bot.
+- **Thread context.** Before a turn, the bot reads the thread the mention sits in (or the ten
+  channel messages above a top-level mention) with its own token and puts them in the prompt, oldest
+  first, so "both", "this" and "the above" resolve. Names replace user ids and links keep their URL.
+  The policy keeps the owner's Slack connector closed, so this is all of Slack the agent sees; when
+  it is not enough, it is told to ask rather than guess.
 - **One bot.** A second copy exits at startup naming the first one's pid (`~/.slack-agent/bot.pid`),
   so `dev` beside the service, or a copy left behind in a shell, cannot split the mentions between
   two sessions. `slack-agent restart` stops every copy and starts one.
