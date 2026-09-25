@@ -55,7 +55,7 @@ backed by your own `claude login`. The core does not care which runtime answers.
 
 ## Setup
 
-Requirements: Node 22+, pnpm, and a Claude Code login (`claude login`) on the machine that runs the bot.
+Requirements: Node 24+, pnpm, and a Claude Code login (`claude login`) on the machine that runs the bot.
 
 1. **Create the Slack app** from [`manifest.json`](manifest.json). To give your instance its own name
    and description, copy `manifest.local.example.json` to `manifest.local.json` (gitignored); it is
@@ -114,7 +114,9 @@ shows "Slack Agent" rather than "pnpm". The bundle is signed with a Developer ID
 one is in the keychain, ad hoc otherwise. `pnpm service status` shows whether it is loaded, its pid and last exit code, and the
 log tail; `stop`, `start`, `restart`, `logs` and `uninstall` do what they say. The log is
 `~/.slack-agent/bot.log`. While changing the bot, `slack-agent stop` then `slack-agent dev`, and
-`slack-agent start` when done; `dev` refuses to start beside the service.
+`slack-agent start` when done; `dev` refuses to start beside the service. The bundle records the
+`node` and `pnpm` on your PATH at install time, so after upgrading Node run `slack-agent install`
+again: `restart` keeps the runtime it was installed with.
 
 ### Local checks without Slack
 

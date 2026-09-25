@@ -10,7 +10,7 @@
     "slack-agent": "scripts/slack-agent"
   },
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "scripts": {
     "start": "tsx src/index.ts",
