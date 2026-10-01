@@ -3,37 +3,39 @@ import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { Follower, logEvent, transcriptEvents } from "./watch.js";
+import { crashLine, describeLedger, Follower } from "./watch.js";
 
-test("the log keeps mentions, denials, turns and failures, and drops routine Socket Mode noise", () => {
-  assert.equal(logEvent("[denied] U1 in C1 thread 1.2: hello"), "[denied] U1 in C1 thread 1.2: hello");
-  assert.equal(logEvent(" ELIFECYCLE  Command failed with exit code 143."), " ELIFECYCLE  Command failed with exit code 143.");
-  assert.equal(logEvent("[ERROR]  bolt-app WebSocket error! SMWebsocketError"), undefined);
-  assert.equal(logEvent("[WARN]  bolt-app A pong wasn't received from the server before the timeout of 5000ms!"), undefined);
+const at = "2026-10-01T18:31:12.000Z";
+
+test("the console shows only crashes, not Bolt's routine Socket Mode noise", () => {
+  assert.equal(crashLine(" ELIFECYCLE  Command failed with exit code 1."), " ELIFECYCLE  Command failed with exit code 1.");
+  assert.equal(crashLine("Error: config.json: project path does not exist: /x"), "Error: config.json: project path does not exist: /x");
+  assert.equal(crashLine("[ERROR]  bolt-app WebSocket error! SMWebsocketError"), undefined);
+  assert.equal(crashLine("[WARN]  bolt-app A pong wasn't received from the server before the timeout of 5000ms!"), undefined);
 });
 
-test("a transcript line is one event per tool call and per failed tool result", () => {
-  const call = {
-    type: "assistant",
-    message: {
-      content: [
-        { type: "text", text: "Looking." },
-        { type: "tool_use", name: "Bash", input: { command: "git status", description: "Show working tree status" } },
-        { type: "tool_use", name: "Skill", input: { skill: "create-pr" } },
-      ],
-    },
-  };
-  assert.deepEqual(transcriptEvents(JSON.stringify(call)), ["[tool] Bash Show working tree status", "[tool] Skill create-pr"]);
-  const results = {
-    type: "user",
-    message: { content: [{ type: "tool_result", is_error: true, content: "Memory is read-only from Slack." }, { type: "tool_result", content: "ok" }] },
-  };
-  assert.deepEqual(transcriptEvents(JSON.stringify(results)), ["[tool error] Memory is read-only from Slack."]);
-  assert.deepEqual(transcriptEvents("not json"), []);
+test("ledger lines read as one line of text each", () => {
+  assert.equal(
+    describeLedger({ at, type: "mention", user: "U1", channel: "C1", thread: "1.2", queue: 0, earlier: 3, text: "share #3297" }),
+    "mention from U1 in C1 thread 1.2 (queue 0, 3 earlier): share #3297",
+  );
+  const stats = { durationMs: 14_000, costUsd: 0.4, toolCalls: 1, inputTokens: 89_000, outputTokens: 623, contextTokens: 52_000 };
+  assert.equal(
+    describeLedger({ at, type: "turn", channel: "C1", thread: "1.2", session: "s1", turn: 1, stats, revised: false, error: false, fresh: false }),
+    "turn 1 · 14s · 1 tool call · 89k in / 623 out · 52k context · ~$0.40 at API rates · session s1",
+  );
+  assert.equal(
+    describeLedger({ at, type: "posted", channel: "C1", thread: "1.2", ts: "3.4", messages: 1, broadcast: true }),
+    "posted 1 message in C1 thread 1.2, sent to channel",
+  );
+  assert.equal(
+    describeLedger({ at, type: "policy", requester: "U1", owner: true, tool: "Bash", decision: "allow", rule: "Bash(git push*)", input: "{}" }),
+    "policy allow Bash (Bash(git push*))",
+  );
 });
 
 test("a follower returns whole new lines only, even when a write splits a character", () => {
-  const path = join(mkdtempSync(join(tmpdir(), "watch-")), "bot.log");
+  const path = join(mkdtempSync(join(tmpdir(), "watch-")), "events.jsonl");
   writeFileSync(path, "before the watch\n");
   const follower = new Follower(path);
   const line = Buffer.from("second ✅\n");

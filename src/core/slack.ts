@@ -1,4 +1,4 @@
-import { App, LogLevel } from "@slack/bolt";
+import { App, LogLevel, SocketModeReceiver } from "@slack/bolt";
 import type { KnownBlock } from "@slack/types";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -6,6 +6,7 @@ import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
 import { channelShare, chunk, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
+import type { Ledger } from "./ledger.js";
 import { fetchContext, userNames } from "./thread.js";
 import type { TurnRunner } from "./turn.js";
 
@@ -85,13 +86,13 @@ function replyBlocks(text: string, footer?: string, tables = true): KnownBlock[]
 }
 
 /** Slack can still reject a table (`invalid_blocks`); the reply then goes out with the table as text. */
-async function sendReply(send: (blocks: KnownBlock[]) => Promise<unknown>, text: string, footer?: string): Promise<void> {
+async function sendReply<T>(ledger: Ledger, send: (blocks: KnownBlock[]) => Promise<T>, text: string, footer?: string): Promise<T> {
   try {
-    await send(replyBlocks(text, footer));
+    return await send(replyBlocks(text, footer));
   } catch (error) {
     if (!String(error).includes("invalid_blocks") || !splitTable(text)) throw error;
-    console.warn(`[table] Slack rejected it, posting the table as text: ${String(error)}`);
-    await send(replyBlocks(text, footer, false));
+    ledger.record({ type: "problem", what: "table", error: `Slack rejected it, so it went out as text: ${String(error)}` });
+    return send(replyBlocks(text, footer, false));
   }
 }
 
@@ -138,12 +139,12 @@ export function describeActivity(event: Extract<AgentEvent, { type: "tool" | "ph
 }
 
 export async function startSlack(config: Config, runner: TurnRunner, adapterName: string): Promise<void> {
-  const app = new App({
-    token: config.slack.botToken,
-    appToken: config.slack.appToken,
-    socketMode: true,
-    logLevel: LogLevel.INFO,
-  });
+  const { ledger } = runner;
+  const receiver = new SocketModeReceiver({ appToken: config.slack.appToken, logLevel: LogLevel.INFO });
+  for (const state of ["connected", "reconnecting", "disconnected"]) {
+    receiver.client.on(state, () => ledger.record({ type: "connection", state }));
+  }
+  const app = new App({ token: config.slack.botToken, receiver, logLevel: LogLevel.INFO });
 
   const auth = await app.client.auth.test();
   const botUserId = auth.user_id ?? "";
@@ -163,7 +164,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       })
       .catch(() => undefined);
     await app.client.reactions.remove({ channel: orphan.channel, timestamp: orphan.mentionTs, name: "eyes" }).catch(() => undefined);
-    console.log(`[recovered] orphaned placeholder ${orphan.ts} in ${orphan.channel}`);
+    ledger.record({ type: "recovered", channel: orphan.channel, ts: orphan.ts });
   }
 
   app.event("app_mention", async ({ event, client }) => {
@@ -184,12 +185,15 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
 
     const text = mention.text.replace(mentionPattern, "").trim();
     if (!config.allowlist.includes(mention.user)) {
-      console.log(`[denied] ${mention.user} in ${mention.channel} thread ${threadTs}: ${text.slice(0, 120)}`);
+      ledger.record({ type: "denied", user: mention.user, channel: mention.channel, thread: threadTs, text: text.slice(0, 120) });
       await reply(`Sorry <@${mention.user}>, you are not on my allowlist. Ask <@${config.owner}> to add you.`);
       return;
     }
 
     const command = text.toLowerCase();
+    if (command === "status" || command === "new") {
+      ledger.record({ type: "command", user: mention.user, channel: mention.channel, thread: threadTs, command });
+    }
 
     if (command === "status") {
       await reply(statusText(runner, adapterName));
@@ -217,12 +221,18 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       const where = mention.thread_ts ? "thread" : "channel";
-      console.warn(`[context] could not read the ${where}: ${message}`);
+      ledger.record({ type: "problem", what: `${where} read`, error: message });
       context.text = `(The ${where} this was posted in could not be read: ${message}. Ask for what you need rather than guessing.)`;
     }
-    console.log(
-      `[mention] ${mention.user} in ${mention.channel} thread ${threadTs} (queue ${depth}, ${context.count} earlier): ${text.slice(0, 120)}`,
-    );
+    ledger.record({
+      type: "mention",
+      user: mention.user,
+      channel: mention.channel,
+      thread: threadTs,
+      queue: depth,
+      earlier: context.count,
+      text: text.slice(0, 120),
+    });
     await react("eyes");
 
     let activity: Activity =
@@ -264,16 +274,20 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       const footer = statsLine(stats);
       // The first message carries the answer plus a context block; overflow goes as plain replies.
       const first = `${prefix}${parts[0] ?? ""}`;
+      let ts = placeholderTs;
       if (share.broadcast) {
         // Slack will not broadcast a reply and change its content in one update (no_dual_broadcast_content_update),
         // so a share is a new reply that also goes to the channel, without the stats line, and the placeholder goes.
-        await sendReply(
+        const shared = await sendReply(
+          ledger,
           (blocks) => client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text: first, blocks, reply_broadcast: true }),
           first,
         );
+        ts = shared.ts ?? ts;
         await client.chat.delete({ channel: mention.channel, ts: placeholderTs }).catch(() => update("Shared in the channel."));
       } else {
         await sendReply(
+          ledger,
           (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: first, blocks }),
           first,
           parts.length === 1 ? footer : undefined,
@@ -282,6 +296,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       for (const [i, part] of parts.slice(1).entries()) {
         const last = i === parts.length - 2;
         await sendReply(
+          ledger,
           (blocks) => client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text: part, blocks }),
           part,
           last ? footer : undefined,
@@ -290,16 +305,23 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       inflight.clear();
       await react("eyes", true);
       await react(outcome.isError ? "x" : "white_check_mark");
-      console.log(
-        `[turn ${outcome.session.turns}] ${footer}, ${outcome.text.length} chars in ${parts.length} message(s)` +
-          `${outcome.revised ? ", revised" : ""}${outcome.isError ? ", error" : ""}${outcome.rotated ? ", fresh session" : ""}` +
-          `${share.broadcast ? ", sent to channel" : ""}, session ${outcome.sessionId}`,
-      );
+      ledger.record({
+        type: "turn",
+        channel: mention.channel,
+        thread: threadTs,
+        session: outcome.sessionId,
+        turn: outcome.session.turns,
+        stats,
+        revised: outcome.revised,
+        error: outcome.isError,
+        fresh: outcome.rotated,
+      });
+      ledger.record({ type: "posted", channel: mention.channel, thread: threadTs, ts, messages: parts.length, broadcast: share.broadcast });
     } catch (error) {
       clearInterval(ticker);
       inflight.clear();
       const message = error instanceof Error ? error.message : String(error);
-      console.error(`[turn failed] ${message}`);
+      ledger.record({ type: "problem", what: "turn", error: message });
       await update(`Something went wrong: \`${message.slice(0, 500)}\``);
       await react("eyes", true);
       await react("x");

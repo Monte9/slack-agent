@@ -1,4 +1,6 @@
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import { transcriptDirFor } from "../core/scope.js";
+import { readTranscriptLine } from "./claude-transcript.js";
 import type { AgentAdapter, RunRequest, RunResult, RunStats } from "./types.js";
 
 const RESUME_FAILED = /no conversation found|session.*not found|could not resume/i;
@@ -114,6 +116,7 @@ export function createClaudeAdapter(options: { model: string | null }): AgentAda
   return {
     name: "claude",
     capabilities: { toolGating: "per-tool" },
+    transcripts: { dir: transcriptDirFor, read: readTranscriptLine },
     async run(request) {
       try {
         return await runOnce(request, request.sessionId);

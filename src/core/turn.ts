@@ -1,8 +1,9 @@
 import { existsSync, readFileSync } from "node:fs";
 import { addStats, type AgentAdapter, type AgentEvent, type RunResult } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { auditPathFor, createGate, describePolicy, loadPolicy, type Policy } from "../policy/gate.js";
+import { createGate, describePolicy, loadPolicy, type Policy } from "../policy/gate.js";
 import { wordCount } from "./format.js";
+import { Ledger } from "./ledger.js";
 import { buildScope, memoryDirFor, memoryRootFor, type ScopeResult } from "./scope.js";
 import { SerialQueue } from "./queue.js";
 import { SessionStore, type SessionRecord } from "./session-store.js";
@@ -95,6 +96,7 @@ export class TurnRunner {
   private readonly store: SessionStore;
   private scope: ScopeResult;
   readonly startedAt = new Date();
+  readonly ledger: Ledger;
 
   constructor(
     private readonly config: Omit<Config, "slack">,
@@ -102,6 +104,7 @@ export class TurnRunner {
     private readonly botName: string,
   ) {
     this.store = new SessionStore(config.stateDir);
+    this.ledger = new Ledger(config.stateDir);
     this.scope = buildScope({ project: config.project, stateDir: config.stateDir, share: config.memoryShare });
   }
 
@@ -136,7 +139,7 @@ export class TurnRunner {
         isOwner,
         policy,
         protectedPaths: [memoryDirFor(memoryRootFor(this.config.project)), this.scope.memoryDir],
-        auditPath: auditPathFor(this.config.stateDir),
+        record: (decision) => this.ledger.record({ type: "policy", ...decision }),
       });
       let model = this.store.read()?.model ?? "";
       const sources = new Set<string>();

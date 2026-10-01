@@ -1,51 +1,57 @@
 import { closeSync, existsSync, openSync, readdirSync, readSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { transcriptDirFor, workspaceFor } from "./scope.js";
+import type { AgentAdapter } from "../agent/types.js";
+import { statsLine } from "./format.js";
+import { ledgerPathFor, type LedgerLine } from "./ledger.js";
+import { workspaceFor } from "./scope.js";
 
 const POLL_MS = 1000;
-/** The bot.log lines worth a look. Bolt's Socket Mode errors are routine: it reconnects on its own. */
-const LOG_EVENT = /\[mention\]|\[denied\]|\[turn|\[recovered\]|\[context\]|\[table\]|rror|ELIFECYCLE|connected over Socket Mode/;
+const WIDTH = 160;
+/** A crash in the console, the one thing that can happen before the bot can write its ledger. */
+const CRASH = /ELIFECYCLE|^Error|Error:|\[ERROR\]/;
+/** Bolt's Socket Mode errors are routine; the ledger records the connection state instead. */
 const ROUTINE = /WebSocket error/;
 
-interface ContentBlock {
-  type?: string;
-  name?: string;
-  input?: Record<string, unknown>;
-  is_error?: boolean;
-  content?: unknown;
+export function crashLine(line: string): string | undefined {
+  return CRASH.test(line) && !ROUTINE.test(line) ? line : undefined;
 }
 
-export function logEvent(line: string): string | undefined {
-  return LOG_EVENT.test(line) && !ROUTINE.test(line) ? line : undefined;
+function clip(text: string): string {
+  const flat = text.replace(/\s+/g, " ").trim();
+  return flat.length > WIDTH ? `${flat.slice(0, WIDTH - 1)}…` : flat;
 }
 
-function summary(input: Record<string, unknown>): string {
-  const value = input.description ?? input.command ?? input.file_path ?? input.pattern ?? input.query ?? input.url ?? input.skill;
-  const text = typeof value === "string" ? value : JSON.stringify(input);
-  return text.length > 140 ? `${text.slice(0, 137)}...` : text;
+function time(at?: string): string {
+  return (at ? new Date(at) : new Date()).toTimeString().slice(0, 8);
 }
 
-function resultText(content: unknown): string {
-  if (typeof content === "string") return content;
-  return Array.isArray(content) ? content.map((part) => (typeof part?.text === "string" ? part.text : "")).join(" ") : "";
-}
-
-/** One transcript line as watch events: each tool call, and each tool result that came back as an error. */
-export function transcriptEvents(line: string): string[] {
-  let entry: { type?: string; message?: { content?: unknown } };
-  try {
-    entry = JSON.parse(line);
-  } catch {
-    return [];
+/** One ledger line as one line of text. */
+export function describeLedger(e: LedgerLine): string {
+  switch (e.type) {
+    case "started":
+      return `started, pid ${e.pid}, ${e.memory} memory files`;
+    case "connection":
+      return `connection ${e.state}`;
+    case "mention":
+      return `mention from ${e.user} in ${e.channel} thread ${e.thread} (queue ${e.queue}, ${e.earlier} earlier): ${e.text}`;
+    case "denied":
+      return `denied ${e.user} in ${e.channel} thread ${e.thread}: ${e.text}`;
+    case "command":
+      return `command ${e.command} from ${e.user} in ${e.channel}`;
+    case "turn":
+      return (
+        `turn ${e.turn} · ${statsLine(e.stats)}` +
+        `${e.revised ? ", revised" : ""}${e.error ? ", error" : ""}${e.fresh ? ", fresh session" : ""} · session ${e.session}`
+      );
+    case "posted":
+      return `posted ${e.messages} message${e.messages === 1 ? "" : "s"} in ${e.channel} thread ${e.thread}${e.broadcast ? ", sent to channel" : ""}`;
+    case "problem":
+      return `problem with the ${e.what}: ${clip(e.error)}`;
+    case "recovered":
+      return `recovered placeholder ${e.ts} in ${e.channel}`;
+    case "policy":
+      return `policy ${e.decision} ${e.tool}${e.rule ? ` (${e.rule})` : ""}${e.reason ? `: ${e.reason}` : ""}`;
   }
-  const blocks: ContentBlock[] = Array.isArray(entry.message?.content) ? entry.message.content : [];
-  if (entry.type === "assistant") {
-    return blocks.filter((b) => b.type === "tool_use").map((b) => `[tool] ${b.name} ${summary(b.input ?? {})}`);
-  }
-  if (entry.type === "user") {
-    return blocks.filter((b) => b.type === "tool_result" && b.is_error).map((b) => `[tool error] ${resultText(b.content).slice(0, 140)}`);
-  }
-  return [];
 }
 
 function sizeOf(path: string): number {
@@ -96,23 +102,35 @@ function newestTranscript(dir: string): string | undefined {
 }
 
 /**
- * Print what the bot is doing as it happens: mentions, denials, turns, errors and restarts from bot.log, and
- * each tool call of the session being written. That is the newest transcript rather than session.json, which
- * a new session only writes when its first turn ends; a session that starts while watching is read from its start.
+ * Print what the bot is doing as it happens: the ledger (what happened around the agent), the agent's own
+ * transcript of the session being written, and crashes from the console. The transcript followed is the newest,
+ * since a new session writes session.json only when its first turn ends; one that starts while watching is read
+ * from its start.
  */
-export function watch(stateDir: string): void {
+export function watch(stateDir: string, adapter: AgentAdapter): void {
   const startedAt = Date.now();
-  const log = new Follower(join(stateDir, "bot.log"));
-  const transcripts = transcriptDirFor(workspaceFor(stateDir));
+  const ledger = new Follower(ledgerPathFor(stateDir));
+  const consoleLog = new Follower(join(stateDir, "bot.log"));
+  const transcripts = adapter.transcripts.dir(workspaceFor(stateDir));
   let session: Follower | undefined;
-  console.error(`Watching ${log.path} and the sessions in ${transcripts}`);
+  console.error(`Watching ${ledger.path}, the sessions in ${transcripts}, and crashes in ${consoleLog.path}`);
   setInterval(() => {
-    for (const line of log.lines()) {
-      const event = logEvent(line);
-      if (event) console.log(event);
+    for (const line of ledger.lines()) {
+      try {
+        const event = JSON.parse(line) as LedgerLine;
+        console.log(`${time(event.at)} ${describeLedger(event)}`);
+      } catch {
+        // A torn write; the next line stands on its own.
+      }
+    }
+    for (const line of consoleLog.lines()) {
+      const crash = crashLine(line);
+      if (crash) console.log(`${time()} console ${crash.trim()}`);
     }
     const newest = newestTranscript(transcripts);
     if (newest && newest !== session?.path) session = new Follower(newest, statSync(newest).birthtimeMs > startedAt);
-    for (const line of session?.lines() ?? []) for (const event of transcriptEvents(line)) console.log(event);
+    for (const line of session?.lines() ?? []) {
+      for (const event of adapter.transcripts.read(line)) console.log(`${time(event.at)} ${event.kind} ${clip(event.text)}`);
+    }
   }, POLL_MS);
 }

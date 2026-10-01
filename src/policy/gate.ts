@@ -1,5 +1,4 @@
-import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
 import type { Gate, GateDecision } from "../agent/types.js";
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -87,12 +86,18 @@ export interface GateContext {
   policy: Policy;
   /** Paths no session may write through, such as the real and scoped memory directories. */
   protectedPaths: string[];
-  auditPath: string;
+  /** Called for every denial and every owner-only allowance. */
+  record: (decision: PolicyDecision) => void;
 }
 
-function audit(auditPath: string, entry: Record<string, unknown>): void {
-  mkdirSync(dirname(auditPath), { recursive: true });
-  appendFileSync(auditPath, `${JSON.stringify({ at: new Date().toISOString(), ...entry })}\n`);
+export interface PolicyDecision {
+  requester: string;
+  owner: boolean;
+  tool: string;
+  decision: "allow" | "deny";
+  rule?: string;
+  reason?: string;
+  input: string;
 }
 
 function touchesProtected(toolName: string, input: Record<string, unknown>, protectedPaths: string[]): boolean {
@@ -100,7 +105,7 @@ function touchesProtected(toolName: string, input: Record<string, unknown>, prot
   return target !== "" && protectedPaths.some((p) => target.includes(p));
 }
 
-/** The gate: the memory guard first, then the policy rules. Denials and owner-only allowances get an audit line. */
+/** The gate: the memory guard first, then the policy rules. Denials and owner-only allowances are recorded. */
 export function createGate(context: GateContext): Gate {
   return ({ toolName, input }) => {
     let decision: GateDecision = { allow: true };
@@ -111,7 +116,7 @@ export function createGate(context: GateContext): Gate {
       ({ rule, decision } = decide(context.policy, toolName, input, context.isOwner));
     }
     if (!decision.allow || rule?.allow === "owner") {
-      audit(context.auditPath, {
+      context.record({
         requester: context.requester,
         owner: context.isOwner,
         tool: toolName,
@@ -123,8 +128,4 @@ export function createGate(context: GateContext): Gate {
     }
     return decision;
   };
-}
-
-export function auditPathFor(stateDir: string): string {
-  return join(stateDir, "audit.jsonl");
 }

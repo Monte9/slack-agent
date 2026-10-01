@@ -15,7 +15,7 @@ export interface Config {
   adapter: "claude";
   /** Model override for the adapter, or null for the runtime default. */
   model: string | null;
-  /** Where the bot keeps its session file, generated workspace and audit log. */
+  /** Where the bot keeps its session file, generated workspace and ledger. */
   stateDir: string;
   /** A markdown file appended to the agent's system prompt, for house style. Read on every turn. */
   instructionsFile: string;

@@ -52,9 +52,34 @@ backed by your own `claude login`. The core does not care which runtime answers.
   unmatched tools are allowed. Rules are enforced in a hook on every tool call, before any allow
   rule the runtime has, and re-read every turn so edits apply without a restart. The agent sees the
   rules in its system prompt, so it says what it cannot do instead of trying. Every denial and every
-  owner-only use is one line in `~/.slack-agent/audit.jsonl`. Start from
+  owner-only use is a `policy` line in the [ledger](#what-it-records). Start from
   [`policy.example.json`](policy.example.json), which keeps personal connectors (Gmail, Calendar,
   Drive, Slack-as-you) out entirely and reserves push, merge, release and Notion writes for the owner.
+
+## What it records
+
+```mermaid
+flowchart TB
+  slack[Slack] <--> layer["Slack layer<br/>allowlist, commands, posts"]
+  layer --> adapter["Agent adapter<br/>Claude now, Codex later"]
+  layer --> ledger[("Bot ledger<br/>~/.slack-agent/events.jsonl")]
+  adapter --> transcript[("Session transcript<br/>written by the agent")]
+  ledger --> watch["slack-agent watch<br/>merges both by time"]
+  transcript --> watch
+```
+
+Each fact has one owner, so nothing is written twice:
+
+| File | Written by | Holds |
+|---|---|---|
+| Session transcript | The agent runtime; for Claude Code, `~/.claude/projects/<workspace key>/<session>.jsonl` | Everything the agent saw and did: the prompt and thread, its thinking, every tool call and result, its replies, tokens per request |
+| `~/.slack-agent/events.jsonl` | The bot | What happened around the agent: mentions (their opening words), denials, commands, turns with time and cost, what was posted and whether it went to the channel, connection drops, restarts, problems, and every policy decision. Owner-only, mode 600 |
+| `~/.slack-agent/bot.log` | launchd, from the process's output | The raw console: Bolt's warnings and crash traces |
+
+`slack-agent watch` follows the ledger, the newest session transcript (so a session started with `new`
+shows from its first call) and crashes in the console, as one timestamped stream. Each adapter says
+where its runtime writes transcripts and how to read a line of them, so the same command can follow a
+Codex session.
 
 ## Setup
 
@@ -118,9 +143,8 @@ if it dies. It also builds a small app bundle at `~/Applications/Slack Agent.app
 from `APP_DISPLAY_NAME`) with the bot's Slack avatar as its icon, so System Settings › Login Items
 shows "Slack Agent" rather than "pnpm". The bundle is signed with a Developer ID or Apple Development certificate when
 one is in the keychain, ad hoc otherwise. `pnpm service status` shows whether it is loaded, its pid and last exit code, and the
-log tail; `stop`, `start`, `restart`, `logs` and `uninstall` do what they say. The log is
-`~/.slack-agent/bot.log`; `slack-agent watch` prints just the events as they happen (mentions, denials,
-turns, each tool call, errors and restarts) and follows a new session after `new`. While changing the bot, `slack-agent stop` then `slack-agent dev`, and
+log tail; `stop`, `start`, `restart`, `logs` and `uninstall` do what they say. The console goes to
+`~/.slack-agent/bot.log`; to see what the bot is doing, run `slack-agent watch` ([What it records](#what-it-records)). While changing the bot, `slack-agent stop` then `slack-agent dev`, and
 `slack-agent start` when done; `dev` refuses to start beside the service. The bundle records the
 `node` and `pnpm` on your PATH at install time, so after upgrading Node run `slack-agent install`
 again: `restart` keeps the runtime it was installed with.

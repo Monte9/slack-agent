@@ -19,5 +19,6 @@ const runner = new TurnRunner(config, adapter, "mclaude");
 
 console.log(`Project ${config.project}`);
 console.log(`Workspace ${runner.workspace}, ${runner.sharedMemory.length} shared memory files`);
+runner.ledger.record({ type: "started", pid: process.pid, project: config.project, memory: runner.sharedMemory.length });
 
 await startSlack(config, runner, adapter.name);

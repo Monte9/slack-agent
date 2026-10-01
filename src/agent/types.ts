@@ -1,6 +1,6 @@
 /**
  * The runtime-agnostic contract. Core owns Slack, the session file, memory scoping,
- * the policy gate and the audit log. An adapter owns one agent runtime.
+ * the policy gate and the bot ledger. An adapter owns one agent runtime, and its transcripts.
  */
 
 export type GateDecision = { allow: true } | { allow: false; reason: string };
@@ -60,6 +60,13 @@ export function addStats(a: RunStats, b: RunStats): RunStats {
   };
 }
 
+/** One thing a watcher shows from an agent's own transcript. */
+export interface TranscriptEvent {
+  at?: string;
+  kind: "tool" | "tool error" | "text";
+  text: string;
+}
+
 export interface AgentAdapter {
   name: string;
   capabilities: {
@@ -67,4 +74,10 @@ export interface AgentAdapter {
     toolGating: "per-tool" | "runtime";
   };
   run(request: RunRequest): Promise<RunResult>;
+  /** The runtime's own record of each session, which a watcher follows instead of the bot repeating it. */
+  transcripts: {
+    /** Where the runtime writes session transcripts for a working directory, one JSONL file per session. */
+    dir(cwd: string): string;
+    read(line: string): TranscriptEvent[];
+  };
 }
