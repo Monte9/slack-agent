@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { chunk, statsLine, toMrkdwn } from "./format.js";
+import { chunk, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import { fetchContext, userNames } from "./thread.js";
 import type { TurnRunner } from "./turn.js";
@@ -72,11 +72,27 @@ class InflightMarker {
   }
 }
 
-/** A reply section, with the small grey stats line under it when this is the last part. */
-function replyBlocks(text: string, footer?: string): KnownBlock[] {
-  const blocks: KnownBlock[] = [{ type: "section", text: { type: "mrkdwn", text } }];
+/**
+ * A reply section, with the small grey stats line under it when this is the last part.
+ * A markdown table in it becomes a native table between the text around it, unless `tables` is false.
+ */
+function replyBlocks(text: string, footer?: string, tables = true): KnownBlock[] {
+  const section = (mrkdwn: string): KnownBlock[] => (mrkdwn ? [{ type: "section", text: { type: "mrkdwn", text: mrkdwn } }] : []);
+  const table = tables ? splitTable(text) : undefined;
+  const blocks = table ? [...section(table.before), tableBlock(table), ...section(table.after)] : section(text);
   if (footer) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: footer }] });
   return blocks;
+}
+
+/** Slack can still reject a table (`invalid_blocks`); the reply then goes out with the table as text. */
+async function sendReply(send: (blocks: KnownBlock[]) => Promise<unknown>, text: string, footer?: string): Promise<void> {
+  try {
+    await send(replyBlocks(text, footer));
+  } catch (error) {
+    if (!String(error).includes("invalid_blocks") || !splitTable(text)) throw error;
+    console.warn(`[table] Slack rejected it, posting the table as text: ${String(error)}`);
+    await send(replyBlocks(text, footer, false));
+  }
 }
 
 /** An emoji and one short, human line for the placeholder, from an agent event. */
@@ -246,20 +262,18 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       const footer = statsLine(stats);
       // The first message carries the answer plus a context block; overflow goes as plain replies.
       const first = `${prefix}${parts[0] ?? ""}`;
-      await client.chat.update({
-        channel: mention.channel,
-        ts: placeholderTs,
-        text: first,
-        blocks: replyBlocks(first, parts.length === 1 ? footer : undefined),
-      });
+      await sendReply(
+        (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: first, blocks }),
+        first,
+        parts.length === 1 ? footer : undefined,
+      );
       for (const [i, part] of parts.slice(1).entries()) {
         const last = i === parts.length - 2;
-        await client.chat.postMessage({
-          channel: mention.channel,
-          thread_ts: threadTs,
-          text: part,
-          blocks: replyBlocks(part, last ? footer : undefined),
-        });
+        await sendReply(
+          (blocks) => client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text: part, blocks }),
+          part,
+          last ? footer : undefined,
+        );
       }
       inflight.clear();
       await react("eyes", true);
