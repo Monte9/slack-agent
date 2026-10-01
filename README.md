@@ -25,6 +25,9 @@ backed by your own `claude login`. The core does not care which runtime answers.
 - **One bot.** A second copy exits at startup naming the first one's pid (`~/.slack-agent/bot.pid`),
   so `dev` beside the service, or a copy left behind in a shell, cannot split the mentions between
   two sessions. `slack-agent restart` stops every copy and starts one.
+- **Awake on AC power.** On macOS the bot holds a `caffeinate -s` assertion while it runs: a sleeping
+  Mac drops the Socket Mode connection, and nothing hears a mention until it wakes. The display still
+  sleeps, and on battery the Mac sleeps as usual.
 - **Serial by design.** Mentions queue and run in order. The second person hears "queued behind 1".
 - **Visible progress.** Your message gets 👀 when picked up and ✅ or ❌ when done. A placeholder reply
   shows what the agent is doing right now, with an emoji per activity (📖 reading, 💻 running, 📊 Mixpanel,
