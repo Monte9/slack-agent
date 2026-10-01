@@ -9,18 +9,10 @@ your repo, with your memory.
 
 ## Why
 
-Your Claude Code sessions build context that lives only on your laptop: how the codebase works,
-tickets, decisions, dashboards. slack-agent puts that agent in Slack, so the conversation and the
-context finally meet.
-
-- **Ask it what you'd ask your own session.** Ticket and PR status, "any anomalies on the dashboard?",
-  "how does X work?", "open a PR for that", answered in the thread where the question came up.
-- **It keeps context.** Every mention joins one long-lived session, so it remembers what it was asked
-  an hour ago, and it reads the thread first so "this" and "both" make sense.
-- **It stays Slack-sized.** Short replies, native tables, links to what it checked, and a post to the
-  channel only when you ask for one.
-- **You stay in control.** It answers only people on your allowlist, follows a tool policy you set
-  (push and merge are yours, personal mail never), and cannot change its memory.
+Everything your Claude Code agent knows (your memory, your repo, your tools) lives on your laptop,
+but the questions come up in Slack. slack-agent puts that same agent in Slack, running on your Mac in
+one ongoing session, unlike Claude in Slack, which starts a fresh cloud sandbox from your GitHub repo
+for every thread.
 
 ## Install
 
@@ -69,11 +61,11 @@ flowchart TB
 - **It runs where your memory lives.** The bot holds a Socket Mode connection from your Mac, so there
   is no public URL, and keeps the Mac awake on AC power, since a sleeping Mac drops the connection.
 - **One session for everything.** Mentions queue, run in order and join the same agent session, which
-  survives restarts.
+  survives restarts. It reads the thread before answering, so "this" and "both" make sense.
 - **A curated view of memory.** Sessions start in a generated workspace that links in only the memory
   files you share, then do their work in your repo.
-- **Checked before posting.** A reply that runs long, skips a link to what it consulted or uses an
-  em-dash goes back to the agent once for a fix.
+- **Slack-sized.** Short replies, native tables, links to what it checked, and a post to the channel
+  only when asked. A reply that runs long, skips a link or uses an em-dash goes back once for a fix.
 - **Each fact has one owner.** The agent's transcript records what it did, and the bot's ledger records
   what happened around it, so `slack-agent watch` can merge the two without either repeating the other.
 
