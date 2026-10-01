@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { splitTable, tableBlock, toMrkdwn, wordCount } from "./format.js";
+import { channelShare, splitTable, tableBlock, toMrkdwn, wordCount } from "./format.js";
 
 const reply = [
   "Six kinds. The target is the bottom row.",
@@ -47,4 +47,12 @@ test("no table inside code, without body rows, past Slack's row limit, or from a
 
 test("table rows do not count toward the word cap", () => {
   assert.equal(wordCount(reply), 12);
+});
+
+test("a [channel] first line asks for the channel too and is not posted; anywhere else it is text", () => {
+  assert.deepEqual(channelShare("[channel]\n*PR for review:* <https://x.y/1|t #1>"), {
+    text: "*PR for review:* <https://x.y/1|t #1>",
+    broadcast: true,
+  });
+  assert.deepEqual(channelShare("Opened #1. [channel] is how I share."), { text: "Opened #1. [channel] is how I share.", broadcast: false });
 });

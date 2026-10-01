@@ -73,7 +73,9 @@ Requirements: Node 24+, pnpm, and a Claude Code login (`claude login`) on the ma
    Slack user id, and `allowlist` to who may talk to the bot. Slack is instant messaging, so a reply is
    checked before it is posted: over `maxReplyWords` (default 80), or no link after consulting an external
    source, and it goes back to the agent once for a corrected version. A markdown table posts as a native
-   Slack table and, like code, does not count toward the cap.
+   Slack table and, like code, does not count toward the cap. A reply whose first line is `[channel]` is
+   also sent to the channel, still as a thread reply and without the stats line; the agent is told to do
+   that only when asked.
 4. **House style**, optional. Write `~/.slack-agent/instructions.md` (or point `instructionsFile`
    elsewhere): link formats, URL patterns for your tools, anything about voice. It is appended to the
    agent's system prompt and re-read on every turn, so edits apply without a restart. The generic rules,

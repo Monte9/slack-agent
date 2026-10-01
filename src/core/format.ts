@@ -38,6 +38,12 @@ export function statsLine(s: {
   return `${time} · ${calls} · ${formatTokens(s.inputTokens)} in / ${formatTokens(s.outputTokens)} out${context} · ~$${s.costUsd.toFixed(2)} at API rates`;
 }
 
+/** A reply whose first line is `[channel]` asks to be sent to the channel as well as the thread. */
+export function channelShare(reply: string): { text: string; broadcast: boolean } {
+  const marker = /^\s*\[channel\][ \t]*\n?/.exec(reply);
+  return marker ? { text: reply.slice(marker[0].length), broadcast: true } : { text: reply, broadcast: false };
+}
+
 /** Words outside code fences and the table. Neither is prose, so neither counts against the cap. */
 export function wordCount(text: string): number {
   const unfenced = text.replace(/```[\s\S]*?```/g, " ");

@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { chunk, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
+import { channelShare, chunk, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import { fetchContext, userNames } from "./thread.js";
 import type { TurnRunner } from "./turn.js";
@@ -256,17 +256,28 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       });
       clearInterval(ticker);
 
-      const parts = chunk(toMrkdwn(outcome.text || "(no reply)"));
+      const share = channelShare(outcome.text || "(no reply)");
+      const parts = chunk(toMrkdwn(share.text || "(no reply)"));
       const prefix = outcome.rotated ? "_The previous session could not be resumed, so this is a fresh one._\n\n" : "";
       const stats = { ...outcome.stats, durationMs: Date.now() - startedAt };
       const footer = statsLine(stats);
       // The first message carries the answer plus a context block; overflow goes as plain replies.
       const first = `${prefix}${parts[0] ?? ""}`;
-      await sendReply(
-        (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: first, blocks }),
-        first,
-        parts.length === 1 ? footer : undefined,
-      );
+      if (share.broadcast) {
+        // Slack will not broadcast a reply and change its content in one update (no_dual_broadcast_content_update),
+        // so a share is a new reply that also goes to the channel, without the stats line, and the placeholder goes.
+        await sendReply(
+          (blocks) => client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text: first, blocks, reply_broadcast: true }),
+          first,
+        );
+        await client.chat.delete({ channel: mention.channel, ts: placeholderTs }).catch(() => update("Shared in the channel."));
+      } else {
+        await sendReply(
+          (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: first, blocks }),
+          first,
+          parts.length === 1 ? footer : undefined,
+        );
+      }
       for (const [i, part] of parts.slice(1).entries()) {
         const last = i === parts.length - 2;
         await sendReply(
@@ -280,7 +291,8 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       await react(outcome.isError ? "x" : "white_check_mark");
       console.log(
         `[turn ${outcome.session.turns}] ${footer}, ${outcome.text.length} chars in ${parts.length} message(s)` +
-          `${outcome.revised ? ", revised" : ""}${outcome.isError ? ", error" : ""}${outcome.rotated ? ", fresh session" : ""}, session ${outcome.sessionId}`,
+          `${outcome.revised ? ", revised" : ""}${outcome.isError ? ", error" : ""}${outcome.rotated ? ", fresh session" : ""}` +
+          `${share.broadcast ? ", sent to channel" : ""}, session ${outcome.sessionId}`,
       );
     } catch (error) {
       clearInterval(ticker);
