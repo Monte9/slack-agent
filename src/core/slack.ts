@@ -182,12 +182,13 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       }
     };
 
+    const text = mention.text.replace(mentionPattern, "").trim();
     if (!config.allowlist.includes(mention.user)) {
+      console.log(`[denied] ${mention.user} in ${mention.channel} thread ${threadTs}: ${text.slice(0, 120)}`);
       await reply(`Sorry <@${mention.user}>, you are not on my allowlist. Ask <@${config.owner}> to add you.`);
       return;
     }
 
-    const text = mention.text.replace(mentionPattern, "").trim();
     const command = text.toLowerCase();
 
     if (command === "status") {
