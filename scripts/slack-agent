@@ -5,6 +5,7 @@
 #   slack-agent dev                               run in the foreground with hot reload (stop the service first)
 #   slack-agent ask "question"                    one turn in the bot's session, without Slack
 #   slack-agent scope                             rebuild the workspace and list the memory it shares
+#   slack-agent watch                             mentions, turns, tool calls and errors as they happen
 set -euo pipefail
 root="$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)"
 cd "$root"
@@ -16,7 +17,7 @@ case "${1:-}" in
   dev)
     exec pnpm dev
     ;;
-  ask|scope)
+  ask|scope|watch)
     exec pnpm -s "$1" "${@:2}"
     ;;
   *)

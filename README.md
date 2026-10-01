@@ -116,7 +116,8 @@ from `APP_DISPLAY_NAME`) with the bot's Slack avatar as its icon, so System Sett
 shows "Slack Agent" rather than "pnpm". The bundle is signed with a Developer ID or Apple Development certificate when
 one is in the keychain, ad hoc otherwise. `pnpm service status` shows whether it is loaded, its pid and last exit code, and the
 log tail; `stop`, `start`, `restart`, `logs` and `uninstall` do what they say. The log is
-`~/.slack-agent/bot.log`. While changing the bot, `slack-agent stop` then `slack-agent dev`, and
+`~/.slack-agent/bot.log`; `slack-agent watch` prints just the events as they happen (mentions, denials,
+turns, each tool call, errors and restarts) and follows a new session after `new`. While changing the bot, `slack-agent stop` then `slack-agent dev`, and
 `slack-agent start` when done; `dev` refuses to start beside the service. The bundle records the
 `node` and `pnpm` on your PATH at install time, so after upgrading Node run `slack-agent install`
 again: `restart` keeps the runtime it was installed with.

@@ -13,6 +13,16 @@ export function projectKey(absolutePath: string): string {
   return absolutePath.replace(/[/.]/g, "-");
 }
 
+/** Where Claude Code writes a project's session transcripts, one `<sessionId>.jsonl` each. */
+export function transcriptDirFor(absolutePath: string): string {
+  return join(homedir(), ".claude", "projects", projectKey(absolutePath));
+}
+
+/** The bot's workspace: its sessions' working directory, and so the key of its memory and transcripts. */
+export function workspaceFor(stateDir: string): string {
+  return join(stateDir, "workspace");
+}
+
 export function memoryDirFor(absolutePath: string): string {
   return join(homedir(), ".claude", "projects", projectKey(absolutePath), "memory");
 }
@@ -77,7 +87,7 @@ export interface ScopeResult {
  * so no prompt can reveal it.
  */
 export function buildScope(options: { project: string; stateDir: string; share: string[] }): ScopeResult {
-  const workspace = join(options.stateDir, "workspace");
+  const workspace = workspaceFor(options.stateDir);
   const sourceMemory = memoryDirFor(memoryRootFor(options.project));
   const targetMemory = memoryDirFor(workspace);
   const isShared = matcher(options.share);
