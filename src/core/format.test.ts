@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { channelShare, chunk, linkedChannels, splitTable, strayShare, tableBlock, toMrkdwn, wordCount } from "./format.js";
+import { channelShare, chunk, linkedChannels, listBlock, proseBlocks, splitTable, strayShare, tableBlock, toMrkdwn, wordCount } from "./format.js";
 
 const reply = [
   "Six kinds. The target is the bottom row.",
@@ -87,6 +87,45 @@ test("changelog entries do not count toward the word cap, and the lines around t
   ];
   assert.equal(wordCount(post.join("\n")), 8);
   assert.equal(wordCount("- [the docs](https://x.y/docs): one two"), 4);
+});
+
+test("bullets become a native list, nested by indent, with links and code kept", () => {
+  const plain = (text: string, code = false) => ({ type: "text", text, style: code ? { bold: false, code: true } : { bold: false } });
+  assert.deepEqual(listBlock(["• <https://x.y/12|PR #12>: retry uploads", "  • nested `code`"]), {
+    type: "rich_text",
+    elements: [
+      {
+        type: "rich_text_list",
+        style: "bullet",
+        indent: 0,
+        elements: [{ type: "rich_text_section", elements: [{ type: "link", url: "https://x.y/12", text: "PR #12", style: { bold: false } }, plain(": retry uploads")] }],
+      },
+      { type: "rich_text_list", style: "bullet", indent: 1, elements: [{ type: "rich_text_section", elements: [plain("nested "), plain("code", true)] }] },
+    ],
+  });
+});
+
+test("a list item with a mention, an emoji code or italics stays text", () => {
+  assert.equal(listBlock(["• asked <@U1>"]), undefined);
+  assert.equal(listBlock(["• shipped :rocket:"]), undefined);
+  assert.equal(listBlock(["• _maybe_ later"]), undefined);
+});
+
+test("prose splits into expanded sections and native lists, and a bullet in code stays code", () => {
+  const blocks = proseBlocks("*Fixes*\n• one\n• two\n\n*Risk: low*\n• three");
+  assert.deepEqual(
+    blocks.map((b) => b.type),
+    ["section", "rich_text", "section", "rich_text"],
+  );
+  assert.deepEqual(blocks[2], { type: "section", text: { type: "mrkdwn", text: "*Risk: low*" }, expand: true });
+  assert.deepEqual(
+    proseBlocks("*Fixes*\n• one", false).map((b) => b.type),
+    ["section"],
+  );
+  assert.deepEqual(
+    proseBlocks("```\n• not a list\n```").map((b) => b.type),
+    ["section"],
+  );
 });
 
 test("blank lines go, except one before a bold line that starts a section, and a bullet is not a section", () => {

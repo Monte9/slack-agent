@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { channelShare, chunk, linkedChannels, permalink, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
+import { channelShare, chunk, linkedChannels, permalink, proseBlocks, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import type { Ledger } from "./ledger.js";
 import { fetchContext, userNames } from "./thread.js";
@@ -75,25 +75,25 @@ class InflightMarker {
 
 /**
  * A reply section, with the small grey stats line under it when this is the last part.
- * A markdown table in it becomes a native table between the text around it, unless `tables` is false.
- * Text past Slack's 3000-character section cap, such as a table sent as text, becomes several sections.
+ * With `rich`, a markdown table in it becomes a native table and its bullets native lists; without, all of it is text.
  */
-function replyBlocks(text: string, footer?: string, tables = true): KnownBlock[] {
-  const section = (mrkdwn: string): KnownBlock[] =>
-    mrkdwn ? chunk(mrkdwn, { tables: false }).map((piece): KnownBlock => ({ type: "section", text: { type: "mrkdwn", text: piece }, expand: true })) : [];
-  const table = tables ? splitTable(text) : undefined;
-  const blocks = table ? [...section(table.before), tableBlock(table), ...section(table.after)] : section(text);
+function replyBlocks(text: string, footer?: string, rich = true): KnownBlock[] {
+  const table = rich ? splitTable(text) : undefined;
+  const blocks = table
+    ? [...proseBlocks(table.before, rich), tableBlock(table), ...proseBlocks(table.after, rich)]
+    : proseBlocks(text, rich);
   if (footer) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: footer }] });
   return blocks;
 }
 
-/** Slack can still reject a table (`invalid_blocks`); the reply then goes out with the table as text. */
+/** Slack can still reject a table or a list (`invalid_blocks`); the reply then goes out as text. */
 async function sendReply<T>(ledger: Ledger, send: (blocks: KnownBlock[]) => Promise<T>, text: string, footer?: string): Promise<T> {
+  const blocks = replyBlocks(text, footer);
   try {
-    return await send(replyBlocks(text, footer));
+    return await send(blocks);
   } catch (error) {
-    if (!String(error).includes("invalid_blocks") || !splitTable(text)) throw error;
-    ledger.record({ type: "problem", what: "table", error: `Slack rejected it, so it went out as text: ${String(error)}` });
+    if (!String(error).includes("invalid_blocks") || blocks.every((b) => b.type === "section" || b.type === "context")) throw error;
+    ledger.record({ type: "problem", what: "rich blocks", error: `Slack rejected them, so the reply went out as text: ${String(error)}` });
     return send(replyBlocks(text, footer, false));
   }
 }

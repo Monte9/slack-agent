@@ -1,4 +1,4 @@
-import type { RawTextElement, RichTextBlock, RichTextElement, TableBlock } from "@slack/types";
+import type { KnownBlock, RawTextElement, RichTextBlock, RichTextElement, RichTextList, RichTextSection, TableBlock } from "@slack/types";
 
 /** Slack caps a section block's text at 3000 characters. */
 const SLACK_LIMIT = 2900;
@@ -278,4 +278,62 @@ export function tableBlock({ rows, align }: Pick<MarkdownTable, "rows" | "align"
       ),
     ),
   };
+}
+
+/** A bullet line as `toMrkdwn` writes it: an indent, `•`, then the item. */
+const BULLET = /^( *)• (.+)$/;
+/** What a list item cannot carry faithfully: mentions, emoji codes, italics and strikethrough. Those stay mrkdwn. */
+const UNSUPPORTED = /<[@#!]|:[a-z0-9_+'-]+:|(?:^|\s)[_~]\S/;
+
+/**
+ * Bullet lines as a native Slack list, where a wrapped item indents under its text rather than its bullet. Two
+ * spaces of indent nest one level. Undefined when an item has formatting the list cannot carry, so it stays mrkdwn.
+ */
+export function listBlock(lines: string[]): RichTextBlock | undefined {
+  const lists: RichTextList[] = [];
+  for (const line of lines) {
+    const [, indent = "", item = ""] = BULLET.exec(line) ?? [];
+    if (!item.trim() || UNSUPPORTED.test(item)) return undefined;
+    const level = Math.min(Math.floor(indent.length / 2), 8);
+    const entry: RichTextSection = { type: "rich_text_section", elements: richText(item, false) };
+    const last = lists.at(-1);
+    if (last && (last.indent ?? 0) === level) last.elements.push(entry);
+    else lists.push({ type: "rich_text_list", style: "bullet", indent: level, elements: [entry] });
+  }
+  return lists.length > 0 ? { type: "rich_text", elements: lists } : undefined;
+}
+
+/**
+ * Reply text as blocks: a section per run of prose, under Slack's section cap and shown in full rather than behind
+ * "Show more", and with `lists`, a native list per run of bullets. A run's edge blank lines go, as the gap between
+ * blocks takes their place.
+ */
+export function proseBlocks(mrkdwn: string, lists = true): KnownBlock[] {
+  const blocks: KnownBlock[] = [];
+  const addRun = (lines: string[], bullets: boolean) => {
+    const list = bullets ? listBlock(lines) : undefined;
+    if (list) {
+      blocks.push(list);
+      return;
+    }
+    const text = lines.join("\n").replace(/^\n+|\n+$/g, "");
+    for (const piece of text ? chunk(text, { tables: false }) : []) {
+      blocks.push({ type: "section", text: { type: "mrkdwn", text: piece }, expand: true });
+    }
+  };
+  let run: string[] = [];
+  let bullets = false;
+  let fenced = false;
+  for (const line of mrkdwn.split("\n")) {
+    if (line.trimStart().startsWith("```")) fenced = !fenced;
+    const bullet = lists && !fenced && BULLET.test(line);
+    if (run.length > 0 && bullet !== bullets) {
+      addRun(run, bullets);
+      run = [];
+    }
+    bullets = bullet;
+    run.push(line);
+  }
+  if (run.length > 0) addRun(run, bullets);
+  return blocks;
 }
