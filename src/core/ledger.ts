@@ -24,7 +24,16 @@ export type LedgerEvent =
       error: boolean;
       fresh: boolean;
     }
-  | { type: "posted"; channel: string; thread: string; ts: string; messages: number; broadcast: boolean }
+  | {
+      type: "posted";
+      channel: string;
+      thread: string;
+      ts: string;
+      messages: number;
+      broadcast: boolean;
+      /** The reply itself, when it went to another channel; the thread then holds a link to it. */
+      elsewhere?: { channel: string; ts: string };
+    }
   | { type: "problem"; what: string; error: string }
   | { type: "recovered"; channel: string; ts: string }
   | ({ type: "policy" } & PolicyDecision);

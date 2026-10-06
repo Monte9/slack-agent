@@ -29,6 +29,10 @@ test("ledger lines read as one line of text each", () => {
     "posted 1 message in C1 thread 1.2, sent to channel",
   );
   assert.equal(
+    describeLedger({ at, type: "posted", channel: "C1", thread: "1.2", ts: "3.4", messages: 1, broadcast: false, elsewhere: { channel: "C2", ts: "5.6" } }),
+    "posted 1 message in C2, asked in C1 thread 1.2",
+  );
+  assert.equal(
     describeLedger({ at, type: "policy", requester: "U1", owner: true, tool: "Bash", decision: "allow", rule: "Bash(git push*)", input: "{}" }),
     "policy allow Bash (Bash(git push*))",
   );

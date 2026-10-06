@@ -2,7 +2,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { addStats, type AgentAdapter, type AgentEvent, type RunResult } from "../agent/types.js";
 import type { Config } from "../config.js";
 import { createGate, describePolicy, loadPolicy, type Policy } from "../policy/gate.js";
-import { wordCount } from "./format.js";
+import { strayShare, wordCount } from "./format.js";
 import { Ledger } from "./ledger.js";
 import { buildScope, memoryDirFor, memoryRootFor, type ScopeResult } from "./scope.js";
 import { SerialQueue } from "./queue.js";
@@ -45,6 +45,9 @@ function reviewReply(text: string, sources: Set<string>, maxWords: number): stri
   }
   const dashes = (text.match(/—/g) ?? []).length;
   if (dashes > 0) problems.push(`It has ${dashes} em-dash${dashes > 1 ? "es" : ""}. Replace each with a colon, period, comma or parentheses.`);
+  if (strayShare(text)) {
+    problems.push("The `[channel]` line works only as the very first line, as `[channel]` or `[channel <#C0123ABCD>]`. Put it first, with nothing before it.");
+  }
   return problems;
 }
 
@@ -70,10 +73,12 @@ function systemPromptAppend(config: Omit<Config, "slack">, botName: string, poli
     "When asked for a table, or when several items share the same few attributes, use one markdown table",
     "instead of bullets: it posts as a native Slack table and does not count toward the word or line limits.",
     "Keep it under 15 rows and 5 short columns, put `---:` under number columns, and the takeaway above it.",
-    "You can post to the channel yourself, in your own voice: a reply whose first line is `[channel]` also goes to",
-    "the channel, still in the thread. Do it only when asked to share or post something, with exactly that message.",
-    "Otherwise offer to share rather than handing over paste-ready text. Never say you cannot post to the channel:",
-    "the blocked Slack connector is the owner's voice, `[channel]` is yours.",
+    "You can post to Slack yourself, in your own voice. A reply whose first line is `[channel]` also goes to this",
+    "channel, still in the thread. One whose first line is `[channel <#C0123ABCD>]` goes to that channel as a new",
+    "message, with a link left in the thread. That works only for a channel the sender linked, as `<#C…>`, in the",
+    "message that asks; if they named one without the link, ask for it. Post only when asked to share or post",
+    "something, with exactly that message. Otherwise offer to post rather than handing over paste-ready text.",
+    "Never say you cannot post: the blocked Slack connector is the owner's voice, `[channel]` is yours.",
     "Link what you cite, as markdown links with a concise label: a ticket as `RB-1234: short title`,",
     "a PR as `#3140: short title`, a report, page or doc by its name. Use URLs that tool results give you,",
     "so the reader can open the ticket, PR or report you are talking about.",

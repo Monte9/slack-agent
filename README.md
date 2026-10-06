@@ -67,6 +67,7 @@ flowchart TB
 ## Security
 
 - Only allowlisted users get answers, and the sender comes from Slack, never from the message text.
+- It posts in another channel only when the sender links that channel in the message that asks.
 - It runs with your credentials and can read any file you can, so keep the allowlist to people you trust.
 - Memory is read-only, and the policy is checked before every tool call.
 - Tokens and `config.json` are gitignored.

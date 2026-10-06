@@ -43,8 +43,12 @@ export function describeLedger(e: LedgerLine): string {
         `turn ${e.turn} · ${statsLine(e.stats)}` +
         `${e.revised ? ", revised" : ""}${e.error ? ", error" : ""}${e.fresh ? ", fresh session" : ""} · session ${e.session}`
       );
-    case "posted":
-      return `posted ${e.messages} message${e.messages === 1 ? "" : "s"} in ${e.channel} thread ${e.thread}${e.broadcast ? ", sent to channel" : ""}`;
+    case "posted": {
+      const messages = `${e.messages} message${e.messages === 1 ? "" : "s"}`;
+      return e.elsewhere
+        ? `posted ${messages} in ${e.elsewhere.channel}, asked in ${e.channel} thread ${e.thread}`
+        : `posted ${messages} in ${e.channel} thread ${e.thread}${e.broadcast ? ", sent to channel" : ""}`;
+    }
     case "problem":
       return `problem with the ${e.what}: ${clip(e.error)}`;
     case "recovered":

@@ -38,10 +38,26 @@ export function statsLine(s: {
   return `${time} · ${calls} · ${formatTokens(s.inputTokens)} in / ${formatTokens(s.outputTokens)} out${context} · ~$${s.costUsd.toFixed(2)} at API rates`;
 }
 
-/** A reply whose first line is `[channel]` asks to be sent to the channel as well as the thread. */
-export function channelShare(reply: string): { text: string; broadcast: boolean } {
-  const marker = /^\s*\[channel\][ \t]*\n?/.exec(reply);
-  return marker ? { text: reply.slice(marker[0].length), broadcast: true } : { text: reply, broadcast: false };
+/**
+ * A reply whose first line is `[channel]` asks to be sent to the channel as well as the thread, and one whose
+ * first line is `[channel <#C0123ABCD>]` asks to be posted in that channel instead.
+ */
+export function channelShare(reply: string): { text: string; broadcast: boolean; to?: string } {
+  const marker = /^\s*\[channel(?:\s+<?#?([CG][A-Z0-9]+)(?:\|[^>\]]*)?>?)?\][ \t]*\n?/.exec(reply);
+  if (!marker) return { text: reply, broadcast: false };
+  const text = reply.slice(marker[0].length);
+  return marker[1] ? { text, broadcast: false, to: marker[1] } : { text, broadcast: true };
+}
+
+/** A `[channel]` line that would post as text: below the first line, or naming a channel without its link. */
+export function strayShare(reply: string): boolean {
+  const share = channelShare(reply);
+  return !share.broadcast && !share.to && /^[ \t]*\[channel\b/m.test(reply);
+}
+
+/** The channels a Slack message links, written `<#C0123ABCD>` or `<#C0123ABCD|name>`. */
+export function linkedChannels(text: string): Set<string> {
+  return new Set(Array.from(text.matchAll(/<#([CG][A-Z0-9]+)(?:\|[^>]*)?>/g), (match) => match[1] ?? ""));
 }
 
 /** Words outside code fences and the table. Neither is prose, so neither counts against the cap. */

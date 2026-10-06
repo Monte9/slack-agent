@@ -1,10 +1,10 @@
-import { App, LogLevel, SocketModeReceiver } from "@slack/bolt";
+import { App, LogLevel, SocketModeReceiver, type webApi } from "@slack/bolt";
 import type { KnownBlock } from "@slack/types";
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { channelShare, chunk, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
+import { channelShare, chunk, linkedChannels, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import type { Ledger } from "./ledger.js";
 import { fetchContext, userNames } from "./thread.js";
@@ -96,6 +96,16 @@ async function sendReply<T>(ledger: Ledger, send: (blocks: KnownBlock[]) => Prom
   }
 }
 
+/** A reply as a new message in another channel, any overflow in its thread. Returns the new message's ts. */
+async function postInChannel(client: webApi.WebClient, ledger: Ledger, channel: string, parts: string[]): Promise<string> {
+  const [first = "", ...rest] = parts;
+  const { ts = "" } = await sendReply(ledger, (blocks) => client.chat.postMessage({ channel, text: first, blocks }), first);
+  for (const part of rest) {
+    await sendReply(ledger, (blocks) => client.chat.postMessage({ channel, thread_ts: ts, text: part, blocks }), part);
+  }
+  return ts;
+}
+
 /** An emoji and one short, human line for the placeholder, from an agent event. */
 export function describeActivity(event: Extract<AgentEvent, { type: "tool" | "phase" }>): Activity {
   if (event.type === "phase") {
@@ -151,6 +161,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
   const botName = auth.user ?? "bot";
   const mentionPattern = new RegExp(`<@${botUserId}>`, "g");
   const nameOf = userNames(app.client);
+  const permalink = (channel: string, ts: string) => `${auth.url ?? ""}archives/${channel}/p${ts.replace(".", "")}`;
 
   const inflight = new InflightMarker(config.stateDir);
   const orphan = inflight.take();
@@ -269,13 +280,37 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
 
       const share = channelShare(outcome.text || "(no reply)");
       const parts = chunk(toMrkdwn(share.text || "(no reply)"));
-      const prefix = outcome.rotated ? "_The previous session could not be resumed, so this is a fresh one._\n\n" : "";
+      let prefix = outcome.rotated ? "_The previous session could not be resumed, so this is a fresh one._\n\n" : "";
       const stats = { ...outcome.stats, durationMs: Date.now() - startedAt };
       const footer = statsLine(stats);
+      let elsewhere: { channel: string; ts: string } | undefined;
+      if (share.to) {
+        let why = "it was not linked in the message that asked";
+        // Only a channel the sender linked in the message that asked, so nothing the agent read can choose one.
+        if (linkedChannels(mention.text).has(share.to)) {
+          try {
+            elsewhere = { channel: share.to, ts: await postInChannel(client, ledger, share.to, parts) };
+          } catch (error) {
+            why = error instanceof Error ? error.message : String(error);
+          }
+        }
+        if (!elsewhere) {
+          ledger.record({ type: "problem", what: `post in ${share.to}`, error: why });
+          prefix += `_Not posted in <#${share.to}>: ${why}._\n\n`;
+        }
+      }
       // The first message carries the answer plus a context block; overflow goes as plain replies.
       const first = `${prefix}${parts[0] ?? ""}`;
       let ts = placeholderTs;
-      if (share.broadcast) {
+      if (elsewhere) {
+        const posted = `${prefix}Posted in <#${elsewhere.channel}>: <${permalink(elsewhere.channel, elsewhere.ts)}|view it>`;
+        await sendReply(
+          ledger,
+          (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: posted, blocks }),
+          posted,
+          footer,
+        );
+      } else if (share.broadcast) {
         // Slack will not broadcast a reply and change its content in one update (no_dual_broadcast_content_update),
         // so a share is a new reply that also goes to the channel, without the stats line, and the placeholder goes.
         const shared = await sendReply(
@@ -293,8 +328,9 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
           parts.length === 1 ? footer : undefined,
         );
       }
-      for (const [i, part] of parts.slice(1).entries()) {
-        const last = i === parts.length - 2;
+      const overflow = elsewhere ? [] : parts.slice(1);
+      for (const [i, part] of overflow.entries()) {
+        const last = i === overflow.length - 1;
         await sendReply(
           ledger,
           (blocks) => client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text: part, blocks }),
@@ -316,7 +352,15 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
         error: outcome.isError,
         fresh: outcome.rotated,
       });
-      ledger.record({ type: "posted", channel: mention.channel, thread: threadTs, ts, messages: parts.length, broadcast: share.broadcast });
+      ledger.record({
+        type: "posted",
+        channel: mention.channel,
+        thread: threadTs,
+        ts,
+        messages: parts.length,
+        broadcast: share.broadcast,
+        elsewhere,
+      });
     } catch (error) {
       clearInterval(ticker);
       inflight.clear();
