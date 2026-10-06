@@ -80,7 +80,7 @@ class InflightMarker {
  */
 function replyBlocks(text: string, footer?: string, tables = true): KnownBlock[] {
   const section = (mrkdwn: string): KnownBlock[] =>
-    mrkdwn ? chunk(mrkdwn, { tables: false }).map((piece): KnownBlock => ({ type: "section", text: { type: "mrkdwn", text: piece } })) : [];
+    mrkdwn ? chunk(mrkdwn, { tables: false }).map((piece): KnownBlock => ({ type: "section", text: { type: "mrkdwn", text: piece }, expand: true })) : [];
   const table = tables ? splitTable(text) : undefined;
   const blocks = table ? [...section(table.before), tableBlock(table), ...section(table.after)] : section(text);
   if (footer) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: footer }] });
