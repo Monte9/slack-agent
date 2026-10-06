@@ -36,6 +36,8 @@ export function describeLedger(e: LedgerLine): string {
       return `mention from ${e.user} in ${e.channel} thread ${e.thread} (queue ${e.queue}, ${e.earlier} earlier): ${e.text}`;
     case "denied":
       return `denied ${e.user} in ${e.channel} thread ${e.thread}: ${e.text}`;
+    case "duplicate":
+      return `skipped a repeat delivery of ${e.ts} in ${e.channel}${e.retry ? ` (retry ${e.retry}${e.reason ? `, ${e.reason}` : ""})` : ""}`;
     case "command":
       return `command ${e.command} from ${e.user} in ${e.channel}`;
     case "turn":

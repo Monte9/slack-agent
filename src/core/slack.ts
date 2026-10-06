@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { channelShare, chunk, linkedChannels, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
+import { channelShare, chunk, linkedChannels, permalink, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import type { Ledger } from "./ledger.js";
 import { fetchContext, userNames } from "./thread.js";
@@ -76,9 +76,11 @@ class InflightMarker {
 /**
  * A reply section, with the small grey stats line under it when this is the last part.
  * A markdown table in it becomes a native table between the text around it, unless `tables` is false.
+ * Text past Slack's 3000-character section cap, such as a table sent as text, becomes several sections.
  */
 function replyBlocks(text: string, footer?: string, tables = true): KnownBlock[] {
-  const section = (mrkdwn: string): KnownBlock[] => (mrkdwn ? [{ type: "section", text: { type: "mrkdwn", text: mrkdwn } }] : []);
+  const section = (mrkdwn: string): KnownBlock[] =>
+    mrkdwn ? chunk(mrkdwn, { tables: false }).map((piece): KnownBlock => ({ type: "section", text: { type: "mrkdwn", text: piece } })) : [];
   const table = tables ? splitTable(text) : undefined;
   const blocks = table ? [...section(table.before), tableBlock(table), ...section(table.after)] : section(text);
   if (footer) blocks.push({ type: "context", elements: [{ type: "mrkdwn", text: footer }] });
@@ -161,7 +163,9 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
   const botName = auth.user ?? "bot";
   const mentionPattern = new RegExp(`<@${botUserId}>`, "g");
   const nameOf = userNames(app.client);
-  const permalink = (channel: string, ts: string) => `${auth.url ?? ""}archives/${channel}/p${ts.replace(".", "")}`;
+  const workspaceUrl = auth.url ?? "";
+  /** Mentions already taken, by message ts. Slack delivers an event again when it misses the ack, sometimes several times. */
+  const taken = new Set<string>();
 
   const inflight = new InflightMarker(config.stateDir);
   const orphan = inflight.take();
@@ -178,9 +182,15 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
     ledger.record({ type: "recovered", channel: orphan.channel, ts: orphan.ts });
   }
 
-  app.event("app_mention", async ({ event, client }) => {
+  app.event("app_mention", async ({ event, client, context: { retryNum, retryReason } }) => {
     const mention = event as MentionEvent;
     if (mention.bot_id || !mention.user) return;
+    if (taken.has(mention.ts)) {
+      ledger.record({ type: "duplicate", channel: mention.channel, ts: mention.ts, retry: retryNum, reason: retryReason });
+      return;
+    }
+    taken.add(mention.ts);
+    if (taken.size > 500) taken.delete(taken.values().next().value ?? "");
     const threadTs = mention.thread_ts ?? mention.ts;
     const reply = (text: string) =>
       client.chat.postMessage({ channel: mention.channel, thread_ts: threadTs, text });
@@ -303,7 +313,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       const first = `${prefix}${parts[0] ?? ""}`;
       let ts = placeholderTs;
       if (elsewhere) {
-        const posted = `${prefix}Posted in <#${elsewhere.channel}>: <${permalink(elsewhere.channel, elsewhere.ts)}|view it>`;
+        const posted = `${prefix}Posted in <#${elsewhere.channel}>: <${permalink(workspaceUrl, elsewhere.channel, elsewhere.ts)}|view it>`;
         await sendReply(
           ledger,
           (blocks) => client.chat.update({ channel: mention.channel, ts: placeholderTs, text: posted, blocks }),

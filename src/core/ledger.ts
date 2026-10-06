@@ -12,6 +12,7 @@ export type LedgerEvent =
   | { type: "connection"; state: string }
   | { type: "mention"; user: string; channel: string; thread: string; queue: number; earlier: number; text: string }
   | { type: "denied"; user: string; channel: string; thread: string; text: string }
+  | { type: "duplicate"; channel: string; ts: string; retry?: number; reason?: string }
   | { type: "command"; user: string; channel: string; thread: string; command: string }
   | {
       type: "turn";

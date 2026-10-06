@@ -55,6 +55,12 @@ export function strayShare(reply: string): boolean {
   return !share.broadcast && !share.to && /^[ \t]*\[channel\b/m.test(reply);
 }
 
+/** A message's link, from the workspace URL `auth.test` returns; a thread reply's opens in its thread. */
+export function permalink(workspaceUrl: string, channel: string, ts: string, thread?: string): string {
+  const link = `${workspaceUrl}archives/${channel}/p${ts.replace(".", "")}`;
+  return thread && thread !== ts ? `${link}?thread_ts=${thread}&cid=${channel}` : link;
+}
+
 /** The channels a Slack message links, written `<#C0123ABCD>` or `<#C0123ABCD|name>`. */
 export function linkedChannels(text: string): Set<string> {
   return new Set(Array.from(text.matchAll(/<#([CG][A-Z0-9]+)(?:\|[^>]*)?>/g), (match) => match[1] ?? ""));
@@ -90,25 +96,57 @@ export function toMrkdwn(markdown: string): string {
     .join("");
 }
 
-/** Split on paragraph boundaries so no chunk exceeds Slack's comfortable message size. */
-export function chunk(text: string, limit = SLACK_LIMIT): string[] {
+interface Unit {
+  text: string;
+  /** What it adds to a message's section text. A table posts as its own block, so it adds nothing. */
+  size: number;
+}
+
+/** A reply's lines, with each code block and table kept whole so a split never lands inside one. */
+function units(text: string, tables: boolean): Unit[] {
+  const lines = text.split("\n");
+  const out: Unit[] = [];
+  for (let i = 0; i < lines.length; ) {
+    let end = i + 1;
+    let table = false;
+    if (lines[i]?.trimStart().startsWith("```")) {
+      while (end < lines.length && !lines[end]?.trimStart().startsWith("```")) end++;
+      end = Math.min(end + 1, lines.length);
+    } else if (tables && lines[i]?.includes("|") && DELIMITER_ROW.test(lines[i + 1] ?? "")) {
+      end = i + 2;
+      while (end < lines.length && lines[end]?.includes("|")) end++;
+      table = true;
+    }
+    const unit = lines.slice(i, end).join("\n");
+    out.push({ text: unit, size: table ? 0 : unit.length });
+    i = end;
+  }
+  return out;
+}
+
+/**
+ * Split a reply into messages on line breaks, each under Slack's section limit, never inside a code block or a
+ * table. A table posts as its own block, so it does not count toward the limit; with `tables` false it is text.
+ */
+export function chunk(text: string, { limit = SLACK_LIMIT, tables = true } = {}): string[] {
   if (text.length <= limit) return [text];
   const chunks: string[] = [];
-  let current = "";
-  for (const paragraph of text.split(/\n\n/)) {
-    const candidate = current ? `${current}\n\n${paragraph}` : paragraph;
-    if (candidate.length > limit && current) {
-      chunks.push(current);
-      current = paragraph;
-    } else {
-      current = candidate;
+  let current: string[] = [];
+  let size = 0;
+  for (const unit of units(text, tables)) {
+    if (current.length > 0 && size + unit.size > limit) {
+      chunks.push(current.join("\n"));
+      current = [];
+      size = 0;
     }
-    while (current.length > limit) {
-      chunks.push(current.slice(0, limit));
-      current = current.slice(limit);
+    if (unit.size > limit) {
+      for (let at = 0; at < unit.text.length; at += limit) chunks.push(unit.text.slice(at, at + limit));
+    } else {
+      current.push(unit.text);
+      size += unit.size + 1;
     }
   }
-  if (current) chunks.push(current);
+  if (current.length > 0) chunks.push(current.join("\n"));
   return chunks;
 }
 

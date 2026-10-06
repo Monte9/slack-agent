@@ -38,7 +38,7 @@ export function plainText(text: string, nameOf: (id: string) => string): string 
     .replace(/&amp;/g, "&");
 }
 
-function when(ts: string): string {
+export function when(ts: string): string {
   return `${new Date(Number(ts) * 1000).toISOString().slice(0, 16).replace("T", " ")} UTC`;
 }
 
@@ -48,17 +48,38 @@ function author(message: ContextMessage, nameOf: (id: string) => string): string
 }
 
 /** Text plus attachment fallbacks, which is where an unfurled link or a GitHub card keeps its words. */
-function body(message: ContextMessage, nameOf: (id: string) => string): string {
+export function messageText(message: ContextMessage, nameOf: (id: string) => string): string {
   const parts = [message.text ?? ""];
   for (const attachment of message.attachments ?? []) {
     const summary = attachment.fallback ?? [attachment.title, attachment.text].filter(Boolean).join(": ");
     if (summary) parts.push(`[attachment: ${summary}]`);
   }
-  const text = plainText(parts.filter(Boolean).join("\n"), nameOf)
+  return plainText(parts.filter(Boolean).join("\n"), nameOf)
     .replace(/\n\s*\n+/g, "\n")
     .trim();
+}
+
+function body(message: ContextMessage, nameOf: (id: string) => string): string {
+  const text = messageText(message, nameOf);
   const cut = text.length > MAX_CHARS ? `${text.slice(0, MAX_CHARS)}…` : text;
   return cut.replace(/\n/g, "\n  ");
+}
+
+/** One message as a line: who, when, anything in `detail`, then its text with names and links resolved. */
+export function messageLine(message: ContextMessage & { ts: string }, nameOf: (id: string) => string, detail?: string): string {
+  return `- ${author(message, nameOf)} at ${when(message.ts)}${detail ? ` (${detail})` : ""}: ${body(message, nameOf)}`;
+}
+
+/** Everyone the messages are from or mention, looked up once each, as a synchronous lookup. */
+export async function namesFor(messages: ContextMessage[], lookup: (id: string) => Promise<string>): Promise<(id: string) => string> {
+  const ids = new Set<string>();
+  for (const m of messages) {
+    if (m.user) ids.add(m.user);
+    for (const match of (m.text ?? "").matchAll(/<@([A-Z0-9]+)/g)) ids.add(match[1] ?? "");
+  }
+  ids.delete("");
+  const names = new Map(await Promise.all([...ids].map(async (id) => [id, await lookup(id)] as const)));
+  return (id) => names.get(id) ?? id;
 }
 
 /**
@@ -80,7 +101,7 @@ export function formatContext(
     kind === "thread"
       ? "The thread this was posted in, oldest first; the message above is the latest:"
       : "The channel messages just above this one, oldest first:";
-  const lines = earlier.map((m) => `- ${author(m, nameOf)} at ${when(m.ts)}: ${body(m, nameOf)}`);
+  const lines = earlier.map((m) => messageLine(m, nameOf));
   return { text: `${heading}\n${lines.join("\n")}`, count: earlier.length };
 }
 
@@ -129,12 +150,5 @@ export async function fetchContext(
     ? await threadMessages(client, { ...mention, thread_ts: mention.thread_ts })
     : ((await client.conversations.history({ channel: mention.channel, latest: mention.ts, inclusive: false, limit: CHANNEL_MESSAGES }))
         .messages ?? []);
-  const ids = new Set<string>();
-  for (const m of messages) {
-    if (m.user) ids.add(m.user);
-    for (const match of (m.text ?? "").matchAll(/<@([A-Z0-9]+)/g)) ids.add(match[1] ?? "");
-  }
-  ids.delete("");
-  const names = new Map(await Promise.all([...ids].map(async (id) => [id, await lookup(id)] as const)));
-  return formatContext(kind, messages, mention.ts, (id) => names.get(id) ?? id);
+  return formatContext(kind, messages, mention.ts, await namesFor(messages, lookup));
 }

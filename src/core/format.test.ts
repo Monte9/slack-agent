@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { channelShare, linkedChannels, splitTable, strayShare, tableBlock, toMrkdwn, wordCount } from "./format.js";
+import { channelShare, chunk, linkedChannels, splitTable, strayShare, tableBlock, toMrkdwn, wordCount } from "./format.js";
 
 const reply = [
   "Six kinds. The target is the bottom row.",
@@ -43,6 +43,17 @@ test("no table inside code, without body rows, past Slack's row limit, or from a
   assert.equal(splitTable("| a | b |\n|---|---|"), undefined);
   assert.equal(splitTable(["| n |", "|---|", ...Array.from({ length: 100 }, (_, i) => `| ${i} |`)].join("\n")), undefined);
   assert.equal(splitTable("Summary\n---\nmore"), undefined);
+});
+
+test("a long reply splits on line breaks, never inside a table or code block, and a table adds nothing to its size", () => {
+  const table = ["| PR | What |", "|---|---|", ...Array.from({ length: 4 }, (_, i) => `| #${i} | ${"x".repeat(30)} |`)].join("\n");
+  const code = ["```", "a".repeat(20), "b".repeat(20), "```"].join("\n");
+  assert.deepEqual(chunk(["Summary line.", table, "After the table.", code].join("\n"), { limit: 50 }), [
+    ["Summary line.", table, "After the table."].join("\n"),
+    code,
+  ]);
+  assert.ok(chunk(["Summary line.", table].join("\n"), { limit: 50, tables: false }).every((part) => part.length <= 50));
+  assert.deepEqual(chunk("y".repeat(90), { limit: 50 }), ["y".repeat(50), "y".repeat(40)]);
 });
 
 test("table rows do not count toward the word cap", () => {

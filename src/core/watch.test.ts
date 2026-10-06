@@ -33,6 +33,10 @@ test("ledger lines read as one line of text each", () => {
     "posted 1 message in C2, asked in C1 thread 1.2",
   );
   assert.equal(
+    describeLedger({ at, type: "duplicate", channel: "C1", ts: "5.6", retry: 2, reason: "timeout" }),
+    "skipped a repeat delivery of 5.6 in C1 (retry 2, timeout)",
+  );
+  assert.equal(
     describeLedger({ at, type: "policy", requester: "U1", owner: true, tool: "Bash", decision: "allow", rule: "Bash(git push*)", input: "{}" }),
     "policy allow Bash (Bash(git push*))",
   );

@@ -19,6 +19,7 @@
         "channels:history",
         "groups:history",
         "channels:read",
+        "groups:read",
         "users:read"
       ]
     }
