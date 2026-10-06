@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { addStats, type AgentAdapter, type AgentEvent, type RunResult } from "../agent/types.js";
@@ -97,6 +98,16 @@ function systemPromptAppend(config: Omit<Config, "slack">, botName: string, poli
   return lines.join("\n");
 }
 
+/**
+ * A line for the top of the next prompt when the instructions changed since the session's last turn. A session
+ * keeps answering the way its earlier replies did after a rule changes, so it is told outright.
+ */
+export function instructionsNote(previous: SessionRecord | undefined, hash: string): string {
+  return previous && previous.instructionsHash !== hash
+    ? "[system] Your instructions changed since your last reply in this session. Follow them now, even where your earlier replies differ.\n\n"
+    : "";
+}
+
 /** Read on every turn, so edits to the file apply without a restart. */
 function readInstructions(path: string): string {
   return existsSync(path) ? readFileSync(path, "utf8").trim() : "";
@@ -153,7 +164,8 @@ export class TurnRunner {
         protectedPaths: [memoryDirFor(memoryRootFor(this.config.project)), this.scope.memoryDir],
         record: (decision) => this.ledger.record({ type: "policy", ...decision }),
       });
-      let model = this.store.read()?.model ?? "";
+      const previous = this.store.read();
+      let model = previous?.model ?? "";
       const sources = new Set<string>();
       const onEvent = (event: AgentEvent) => {
         if (event.type === "init") model = event.model;
@@ -163,10 +175,12 @@ export class TurnRunner {
         }
         request.onEvent?.(event);
       };
+      const instructions = systemPromptAppend(this.config, this.botName, policy);
+      const instructionsHash = createHash("sha256").update(instructions).digest("hex").slice(0, 16);
       const base = {
         cwd: this.scope.workspace,
         additionalDirectories: [this.config.project],
-        systemPromptAppend: systemPromptAppend(this.config, this.botName, policy),
+        systemPromptAppend: instructions,
         gate,
         onEvent,
       };
@@ -174,9 +188,10 @@ export class TurnRunner {
       let result = await this.adapter.run({
         ...base,
         prompt:
+          instructionsNote(previous, instructionsHash) +
           `[${request.origin}] from <@${request.requester}> (${isOwner ? "owner" : "teammate"}):\n${request.text}` +
           (request.context ? `\n\n${request.context}` : ""),
-        sessionId: this.store.read()?.sessionId,
+        sessionId: previous?.sessionId,
       });
 
       let revised = false;
@@ -196,7 +211,7 @@ export class TurnRunner {
         }
       }
 
-      const session = this.store.recordTurn(result.sessionId, model, result.stats.contextTokens);
+      const session = this.store.recordTurn(result.sessionId, model, result.stats.contextTokens, instructionsHash);
       return { ...result, session, revised };
     });
   }
