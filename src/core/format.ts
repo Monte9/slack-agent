@@ -67,7 +67,7 @@ export function linkedChannels(text: string): Set<string> {
 }
 
 /** A changelog entry: a bullet that opens with a link to a PR or ticket. Like a table row, it is data, not prose. */
-const CHANGELOG_ENTRY = /^\s*[-*•]\s+\[(?:(?:PR )?#\d+|[A-Z][A-Z0-9]+-\d+)[^\]]*\]\(/;
+const CHANGELOG_ENTRY = /^\s*[-*•]\s+\[(?:(?:PR )?#\d+[^\]]*|[^\]]*#\d+|[A-Z][A-Z0-9]+-\d+[^\]]*)\]\(/;
 /** A line that opens in bold, such as a release name or `*Fixes*`, starts a section. A `* ` bullet does not. */
 const BOLD_START = String.raw`[ \t]*\*+[^\s*]`;
 const BLANK_BEFORE_SECTION = new RegExp(String.raw`\n[ \t]*\n+(?=${BOLD_START})`, "g");

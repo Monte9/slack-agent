@@ -76,8 +76,17 @@ test("table rows do not count toward the word cap", () => {
 });
 
 test("changelog entries do not count toward the word cap, and the lines around them do", () => {
-  const post = ["*Release 0.1.2* (diff)", "*Fixes*", "- [#12](https://x.y/12): one two three four", "- [ABC-34: t](https://x.y/34): five", "*Risk: low*", "- seven eight"];
+  const post = [
+    "*Release 0.1.2* (diff)",
+    "*Fixes*",
+    "- [#12](https://x.y/12): one two three four",
+    "- [ABC-34: t](https://x.y/34): five",
+    "- [retry uploads #56](https://x.y/56): six",
+    "*Risk: low*",
+    "- seven eight",
+  ];
   assert.equal(wordCount(post.join("\n")), 8);
+  assert.equal(wordCount("- [the docs](https://x.y/docs): one two"), 4);
 });
 
 test("blank lines go, except one before a bold line that starts a section, and a bullet is not a section", () => {
