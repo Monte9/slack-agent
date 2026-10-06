@@ -66,17 +66,28 @@ export function linkedChannels(text: string): Set<string> {
   return new Set(Array.from(text.matchAll(/<#([CG][A-Z0-9]+)(?:\|[^>]*)?>/g), (match) => match[1] ?? ""));
 }
 
-/** Words outside code fences and the table. Neither is prose, so neither counts against the cap. */
+/** A changelog entry: a bullet that opens with a link to a PR or ticket. Like a table row, it is data, not prose. */
+const CHANGELOG_ENTRY = /^\s*[-*•]\s+\[(?:(?:PR )?#\d+|[A-Z][A-Z0-9]+-\d+)[^\]]*\]\(/;
+/** A line that opens in bold, such as a release name or `*Fixes*`, starts a section. A `* ` bullet does not. */
+const BOLD_START = String.raw`[ \t]*\*+[^\s*]`;
+const BLANK_BEFORE_SECTION = new RegExp(String.raw`\n[ \t]*\n+(?=${BOLD_START})`, "g");
+const BLANK_LINES = new RegExp(String.raw`\n[ \t]*\n+(?!${BOLD_START})`, "g");
+
+/** Words outside code fences, the table and changelog entries. None of them is prose, so none counts against the cap. */
 export function wordCount(text: string): number {
   const unfenced = text.replace(/```[\s\S]*?```/g, " ");
   const table = splitTable(unfenced);
-  const prose = table ? `${table.before} ${table.after}` : unfenced;
+  const prose = (table ? `${table.before}\n${table.after}` : unfenced)
+    .split("\n")
+    .filter((line) => !CHANGELOG_ENTRY.test(line))
+    .join("\n");
   return prose.split(/\s+/).filter((w) => /\w/.test(w)).length;
 }
 
 /**
  * Convert the markdown an agent writes into Slack mrkdwn. Code blocks pass through untouched.
- * Blank lines go too: Slack hides tall messages behind "Show more", and a blank line is a line.
+ * Blank lines go too, since Slack hides tall messages behind "Show more" and a blank line is a line,
+ * except one before a bold line that starts a section, which keeps a long post readable.
  */
 export function toMrkdwn(markdown: string): string {
   const parts = markdown.split(/(```[\s\S]*?```)/g);
@@ -84,7 +95,8 @@ export function toMrkdwn(markdown: string): string {
     .map((part, i) => {
       if (i % 2 === 1) return part;
       return part
-        .replace(/\n[ \t]*\n+/g, "\n")
+        .replace(BLANK_BEFORE_SECTION, "\n\n")
+        .replace(BLANK_LINES, "\n")
         .replace(/^#{1,6}\s+(.+)$/gm, "*$1*")
         .replace(/\*\*(.+?)\*\*/g, "*$1*")
         .replace(/__(.+?)__/g, "_$1_")

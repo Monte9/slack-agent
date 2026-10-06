@@ -75,6 +75,15 @@ test("table rows do not count toward the word cap", () => {
   assert.equal(wordCount(reply), 12);
 });
 
+test("changelog entries do not count toward the word cap, and the lines around them do", () => {
+  const post = ["*Release 0.1.2* (diff)", "*Fixes*", "- [#12](https://x.y/12): one two three four", "- [ABC-34: t](https://x.y/34): five", "*Risk: low*", "- seven eight"];
+  assert.equal(wordCount(post.join("\n")), 8);
+});
+
+test("blank lines go, except one before a bold line that starts a section, and a bullet is not a section", () => {
+  assert.equal(toMrkdwn("**One**\n- a\n\n\n**Two**\n\n- b\n\nplain\n\n* c"), "*One*\n• a\n\n*Two*\n• b\nplain\n• c");
+});
+
 test("a [channel] first line asks for the channel too and is not posted; anywhere else it is text", () => {
   assert.deepEqual(channelShare("[channel]\n*PR for review:* <https://x.y/1|t #1>"), {
     text: "*PR for review:* <https://x.y/1|t #1>",

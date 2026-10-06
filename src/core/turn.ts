@@ -75,6 +75,8 @@ function systemPromptAppend(config: Omit<Config, "slack">, botName: string, poli
     "Never paste an earlier reply. Asked the same thing again, check again and report what changed since, in the same shape.",
     "Use Slack-friendly markdown: bold sparingly, a short bullet list at most, code in fences, no headers.",
     "Slack hides tall messages behind Show more, so no preamble, no blank lines, and about six lines at most.",
+    "Those limits are for answers. A format the house style names, such as a release changelog, keeps its",
+    "headings on their own lines and a blank line between sections, and its PR entries do not count as words.",
     "When asked for a table, or when several items share the same few attributes, use one markdown table",
     "instead of bullets: it posts as a native Slack table and does not count toward the word or line limits.",
     "Keep it under 15 rows and 5 short columns, put `---:` under number columns, and the takeaway above it.",
