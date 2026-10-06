@@ -56,6 +56,21 @@ test("a long reply splits on line breaks, never inside a table or code block, an
   assert.deepEqual(chunk("y".repeat(90), { limit: 50 }), ["y".repeat(50), "y".repeat(40)]);
 });
 
+test("a code block too long for one message is cut between lines and closed and reopened in each part", () => {
+  const lines = Array.from({ length: 6 }, (_, i) => `line ${i} ${"z".repeat(10)}`);
+  const parts = chunk(["```ts", ...lines, "```"].join("\n"), { limit: 50 });
+  assert.ok(parts.every((part) => part.startsWith("```ts\n") && part.endsWith("\n```") && part.length <= 50));
+  assert.deepEqual(
+    parts.flatMap((part) => part.split("\n").slice(1, -1)),
+    lines,
+  );
+  assert.deepEqual(chunk(`${"word ".repeat(15)}end`, { limit: 30 }), [
+    "word word word word word word",
+    "word word word word word word",
+    "word word word end",
+  ]);
+});
+
 test("table rows do not count toward the word cap", () => {
   assert.equal(wordCount(reply), 12);
 });

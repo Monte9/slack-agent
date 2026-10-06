@@ -124,6 +124,40 @@ function units(text: string, tables: boolean): Unit[] {
   return out;
 }
 
+/** A line cut into pieces of at most `room` characters, at a space where there is one. */
+function wrap(line: string, room: number): string[] {
+  const pieces: string[] = [];
+  let rest = line;
+  while (rest.length > room) {
+    const space = rest.lastIndexOf(" ", room);
+    const at = space > 0 ? space : room;
+    pieces.push(rest.slice(0, at));
+    rest = rest.slice(at).trimStart();
+  }
+  return [...pieces, rest];
+}
+
+/** Text too long for one message, cut on line breaks and then spaces. A code block is closed and reopened at each cut. */
+function cut(text: string, limit: number): string[] {
+  const open = /^\s*(```[^\n]*)\n/.exec(text)?.[1];
+  const body = open ? text.replace(/^\s*```[^\n]*\n/, "").replace(/\n?```\s*$/, "") : text;
+  const room = open ? limit - open.length - 5 : limit;
+  const pieces: string[] = [];
+  let current: string[] = [];
+  let size = 0;
+  for (const line of body.split("\n").flatMap((l) => wrap(l, room))) {
+    if (current.length > 0 && size + line.length > room) {
+      pieces.push(current.join("\n"));
+      current = [];
+      size = 0;
+    }
+    current.push(line);
+    size += line.length + 1;
+  }
+  if (current.length > 0) pieces.push(current.join("\n"));
+  return open ? pieces.map((piece) => `${open}\n${piece}\n\`\`\``) : pieces;
+}
+
 /**
  * Split a reply into messages on line breaks, each under Slack's section limit, never inside a code block or a
  * table. A table posts as its own block, so it does not count toward the limit; with `tables` false it is text.
@@ -140,7 +174,7 @@ export function chunk(text: string, { limit = SLACK_LIMIT, tables = true } = {})
       size = 0;
     }
     if (unit.size > limit) {
-      for (let at = 0; at < unit.text.length; at += limit) chunks.push(unit.text.slice(at, at + limit));
+      chunks.push(...cut(unit.text, limit));
     } else {
       current.push(unit.text);
       size += unit.size + 1;
