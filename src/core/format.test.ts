@@ -58,20 +58,20 @@ test("a [channel] first line asks for the channel too and is not posted; anywher
 });
 
 test("a [channel] first line that names a channel asks for that channel instead, in any link form", () => {
-  const to = { text: "Needs an owner", broadcast: false, to: "C03S5RK9Z29" };
-  assert.deepEqual(channelShare("[channel <#C03S5RK9Z29>]\nNeeds an owner"), to);
-  assert.deepEqual(channelShare("[channel <#C03S5RK9Z29|team-eng>] Needs an owner"), to);
-  assert.deepEqual(channelShare("[channel C03S5RK9Z29]\nNeeds an owner"), to);
+  const to = { text: "Needs an owner", broadcast: false, to: "C0123ABCD" };
+  assert.deepEqual(channelShare("[channel <#C0123ABCD>]\nNeeds an owner"), to);
+  assert.deepEqual(channelShare("[channel <#C0123ABCD|eng>] Needs an owner"), to);
+  assert.deepEqual(channelShare("[channel C0123ABCD]\nNeeds an owner"), to);
 });
 
 test("a [channel] line below the first, or naming a channel without its link, is stray; one in a sentence is not", () => {
-  assert.equal(strayShare("I can post there after all. Posting now.\n\n[channel <#C03S5RK9Z29>]\nNeeds an owner"), true);
-  assert.equal(strayShare("[channel #team-eng]\nNeeds an owner"), true);
-  assert.equal(strayShare("[channel <#C03S5RK9Z29>]\nNeeds an owner"), false);
+  assert.equal(strayShare("I can post there after all. Posting now.\n\n[channel <#C0123ABCD>]\nNeeds an owner"), true);
+  assert.equal(strayShare("[channel #eng]\nNeeds an owner"), true);
+  assert.equal(strayShare("[channel <#C0123ABCD>]\nNeeds an owner"), false);
   assert.equal(strayShare("Opened #1. [channel] is how I share."), false);
 });
 
 test("the channels a message links, with or without a name, and not one typed as text", () => {
-  assert.deepEqual(linkedChannels("post it in <#C03S5RK9Z29> and <#C092PMM0RTL|releases>, not #general"), new Set(["C03S5RK9Z29", "C092PMM0RTL"]));
-  assert.equal(linkedChannels("post it in #team-eng").size, 0);
+  assert.deepEqual(linkedChannels("post it in <#C0123ABCD> and <#C0456EFGH|releases>, not #general"), new Set(["C0123ABCD", "C0456EFGH"]));
+  assert.equal(linkedChannels("post it in #eng").size, 0);
 });
