@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentEvent } from "../agent/types.js";
 import type { Config } from "../config.js";
-import { channelShare, chunk, linkedChannels, permalink, proseBlocks, splitTable, statsLine, tableBlock, toMrkdwn } from "./format.js";
+import { channelShare, chunk, footerLine, linkedChannels, permalink, proseBlocks, splitTable, tableBlock, toMrkdwn } from "./format.js";
 import { statusText } from "./status.js";
 import type { Ledger } from "./ledger.js";
 import { fetchContext, userNames } from "./thread.js";
@@ -292,7 +292,7 @@ export async function startSlack(config: Config, runner: TurnRunner, adapterName
       const parts = chunk(toMrkdwn(share.text || "(no reply)"));
       let prefix = outcome.rotated ? "_The previous session could not be resumed, so this is a fresh one._\n\n" : "";
       const stats = { ...outcome.stats, durationMs: Date.now() - startedAt };
-      const footer = statsLine(stats);
+      const footer = footerLine({ ...stats, model: outcome.session.model, effort: outcome.effort });
       let elsewhere: { channel: string; ts: string } | undefined;
       if (share.to) {
         let why = "it was not linked in the message that asked";

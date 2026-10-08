@@ -18,6 +18,7 @@ function inputOf(usage: { input_tokens: number; cache_read_input_tokens?: number
 
 export function createClaudeAdapter(options: { model: string | null }): AgentAdapter {
   async function runOnce(request: RunRequest, sessionId: string | undefined): Promise<RunResult> {
+    let effort: string | undefined;
     const sdkOptions: Options = {
       cwd: request.cwd,
       additionalDirectories: request.additionalDirectories,
@@ -44,6 +45,17 @@ export function createClaudeAdapter(options: { model: string | null }): AgentAda
                     permissionDecisionReason: decision.reason,
                   },
                 };
+              },
+            ],
+          },
+        ],
+        // The init message doesn't carry the effort; the hook input has the level the turn ran at.
+        Stop: [
+          {
+            hooks: [
+              async (input) => {
+                if (input.effort) effort = input.effort.level;
+                return {};
               },
             ],
           },
@@ -110,6 +122,7 @@ export function createClaudeAdapter(options: { model: string | null }): AgentAda
       isError,
       rotated: false,
       stats,
+      effort,
     };
   }
 

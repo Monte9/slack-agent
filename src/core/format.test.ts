@@ -1,6 +1,32 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { channelShare, chunk, linkedChannels, listBlock, proseBlocks, splitTable, strayShare, tableBlock, toMrkdwn, wordCount } from "./format.js";
+import {
+  channelShare,
+  chunk,
+  footerLine,
+  linkedChannels,
+  listBlock,
+  modelName,
+  proseBlocks,
+  splitTable,
+  strayShare,
+  tableBlock,
+  toMrkdwn,
+  wordCount,
+} from "./format.js";
+
+test("model ids read the way Claude's Slack app names them", () => {
+  assert.equal(modelName("claude-opus-5[1m]"), "Opus 5");
+  assert.equal(modelName("claude-sonnet-5-5"), "Sonnet 5.5");
+  assert.equal(modelName("claude-haiku-4-5-20251001"), "Haiku 4.5");
+  assert.equal(modelName("some-other-model"), "some-other-model");
+});
+
+test("the footer under a reply is time, tool calls, model and effort", () => {
+  const line = footerLine({ durationMs: 309_400, toolCalls: 22, model: "claude-opus-5[1m]", effort: "high" });
+  assert.equal(line, "5m 9s · 22 tool calls · Opus 5 · high effort");
+  assert.equal(footerLine({ durationMs: 37_000, toolCalls: 1 }), "37s · 1 tool call");
+});
 
 const reply = [
   "Six kinds. The target is the bottom row.",

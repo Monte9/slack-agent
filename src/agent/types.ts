@@ -46,6 +46,8 @@ export interface RunResult {
   /** True when the requested session could not be resumed and a fresh one was started. */
   rotated: boolean;
   stats: RunStats;
+  /** The reasoning effort the turn ran at, such as `high`, when the runtime reports one. */
+  effort?: string;
 }
 
 export function addStats(a: RunStats, b: RunStats): RunStats {

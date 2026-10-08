@@ -208,7 +208,7 @@ export class TurnRunner {
           sessionId: result.sessionId,
         });
         if (!fixed.isError && fixed.text.trim()) {
-          result = { ...fixed, rotated: result.rotated, stats: addStats(result.stats, fixed.stats) };
+          result = { ...fixed, rotated: result.rotated, stats: addStats(result.stats, fixed.stats), effort: fixed.effort ?? result.effort };
           revised = true;
         }
       }

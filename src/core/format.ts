@@ -19,8 +19,22 @@ export function formatTokens(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k` : String(n);
 }
 
+/** `claude-opus-4-6[1m]` reads `Opus 4.6`, as Claude's own Slack app names it; an id it doesn't recognize stays as is. */
+export function modelName(id: string): string {
+  const match = /^claude-([a-z]+)-(\d[\d-]*?)(?:-\d{8})?(?:\[[^\]]*\])?$/.exec(id);
+  if (!match) return id;
+  const [, family = "", version = ""] = match;
+  return `${family.charAt(0).toUpperCase()}${family.slice(1)} ${version.replace(/-/g, ".")}`;
+}
+
+function timeAndCalls(s: { durationMs: number; toolCalls: number }): string {
+  const seconds = Math.round(s.durationMs / 1000);
+  const time = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
+  return `${time} · ${s.toolCalls} tool call${s.toolCalls === 1 ? "" : "s"}`;
+}
+
 /**
- * The small grey line under a reply: `37s · 6 tool calls · 582k in / 1.5k out · 103k context · ~$1.20 at API rates`.
+ * A turn's usage for `watch`: `37s · 6 tool calls · 582k in / 1.5k out · 103k context · ~$1.20 at API rates`.
  * "in" is summed over the turn's requests and tracks cost; "context" is the last request and tracks growth.
  */
 export function statsLine(s: {
@@ -31,11 +45,15 @@ export function statsLine(s: {
   contextTokens: number;
   costUsd: number;
 }): string {
-  const seconds = Math.round(s.durationMs / 1000);
-  const time = seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds}s`;
-  const calls = `${s.toolCalls} tool call${s.toolCalls === 1 ? "" : "s"}`;
   const context = s.contextTokens ? ` · ${formatTokens(s.contextTokens)} context` : "";
-  return `${time} · ${calls} · ${formatTokens(s.inputTokens)} in / ${formatTokens(s.outputTokens)} out${context} · ~$${s.costUsd.toFixed(2)} at API rates`;
+  return `${timeAndCalls(s)} · ${formatTokens(s.inputTokens)} in / ${formatTokens(s.outputTokens)} out${context} · ~$${s.costUsd.toFixed(2)} at API rates`;
+}
+
+/** The small grey line under a reply: `37s · 6 tool calls · Opus 5 · high effort`. */
+export function footerLine(s: { durationMs: number; toolCalls: number; model?: string; effort?: string }): string {
+  const model = s.model ? ` · ${modelName(s.model)}` : "";
+  const effort = s.effort ? ` · ${s.effort} effort` : "";
+  return `${timeAndCalls(s)}${model}${effort}`;
 }
 
 /**
