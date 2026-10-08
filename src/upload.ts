@@ -1,4 +1,5 @@
-import { basename } from "node:path";
+import { existsSync } from "node:fs";
+import { basename, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { webApi } from "@slack/bolt";
 import { loadConfig } from "./config.js";
@@ -20,14 +21,30 @@ for (let i = 0; i < args.length; i++) {
   else if (arg.startsWith("--")) flags.set(arg.slice(2), args[++i] ?? "");
   else words.push(arg);
 }
-const [target = "", file = ""] = words;
+const [target = "", given = ""] = words;
 
 type UploadResult = { files?: { files?: { id?: string }[] }[] };
 
+// Slack's detail on each rejected attempt, printed only when the upload fails, so a retry that succeeds
+// doesn't print an [ERROR] that reads like a failure and invites a second post.
+const slackDetail: string[] = [];
+const keep = (...msg: unknown[]) => void slackDetail.push(msg.join(" "));
+const logger: webApi.Logger = {
+  debug: () => {},
+  info: () => {},
+  warn: keep,
+  error: keep,
+  setLevel: () => {},
+  getLevel: () => webApi.LogLevel.WARN,
+  setName: () => {},
+};
+
 try {
-  if (!target || !file) {
+  if (!target || !given) {
     throw new Error("Usage: slack-agent upload <channel | message link> <file> [--comment <text>] [--title <text>] [--broadcast]");
   }
+  const file = resolve(process.env.SLACK_AGENT_CWD ?? process.cwd(), given);
+  if (!existsSync(file)) throw new Error(`No file at ${file}`);
   const link = parseLink(target);
   const channel = link?.channel ?? /^<?#?([CG][A-Z0-9]{6,})(?:\|[^>]*)?>?$/.exec(target)?.[1];
   if (!channel) throw new Error(`"${target}" is not a channel id or a message link`);
@@ -35,7 +52,7 @@ try {
   if (broadcast && !threadTs) throw new Error("--broadcast needs a message link to reply under");
   const config = loadConfig();
   // The default retries for about 30 minutes; a turn waiting on this should fail fast instead.
-  const client = new webApi.WebClient(config.slack.botToken, { retryConfig: { retries: 2 } });
+  const client = new webApi.WebClient(config.slack.botToken, { retryConfig: { retries: 2 }, logger });
   const comment = flags.get("comment");
   const title = flags.get("title");
   const upload = {
@@ -72,6 +89,7 @@ try {
   const where = threadTs ? ` in thread ${threadTs}${broadcast ? ", also sent to the channel" : ""}` : "";
   console.log(`Uploaded ${basename(file)} to <#${channel}>${where}`);
 } catch (error) {
+  for (const line of slackDetail) console.error(line);
   console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);
 }

@@ -9,6 +9,8 @@
 #   slack-agent read channels|history|thread|search   Slack as the bot sees it, for a turn that needs more than its thread
 #   slack-agent upload <channel | message link> <file> [--comment <text>] [--broadcast]   post a local file as the bot
 set -euo pipefail
+# Commands run from the repo root, so a file argument resolves against the caller's directory.
+export SLACK_AGENT_CWD="$PWD"
 root="$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)"
 cd "$root"
 
