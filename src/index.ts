@@ -14,7 +14,7 @@ try {
 }
 // A sleeping Mac drops the Socket Mode connection, so hold it awake on AC power for as long as this process lives.
 if (process.platform === "darwin") spawn("/usr/bin/caffeinate", ["-s", "-w", String(process.pid)], { stdio: "ignore" }).unref();
-const adapter = createClaudeAdapter({ model: config.model });
+const adapter = createClaudeAdapter({ model: config.model, effort: config.effort });
 const runner = new TurnRunner(config, adapter, "mclaude");
 
 console.log(`Project ${config.project}`);

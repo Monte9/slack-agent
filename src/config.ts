@@ -2,6 +2,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
+const EFFORTS = ["low", "medium", "high", "xhigh", "max"] as const;
+export type Effort = (typeof EFFORTS)[number];
+
 export interface Config {
   /** Absolute path to the repo the agent works in. Its memory is the bot's identity. */
   project: string;
@@ -15,6 +18,8 @@ export interface Config {
   adapter: "claude";
   /** Model override for the adapter, or null for the runtime default. */
   model: string | null;
+  /** Reasoning effort override, or null for the model's default. */
+  effort: Effort | null;
   /** Where the bot keeps its session file, generated workspace and ledger. */
   stateDir: string;
   /** A markdown file appended to the agent's system prompt, for house style. Read on every turn. */
@@ -75,6 +80,10 @@ export function loadConfig(): Config {
   if (adapter !== "claude") throw new Error(`config.json: unknown adapter "${adapter}"`);
 
   const model = raw.model == null ? null : assertString(raw, "model");
+  const effort = raw.effort == null ? null : assertString(raw, "effort");
+  if (effort !== null && !EFFORTS.includes(effort as Effort)) {
+    throw new Error(`config.json: "effort" must be one of ${EFFORTS.join(", ")}`);
+  }
   const stateDir = resolve(expandHome(typeof raw.stateDir === "string" ? raw.stateDir : "~/.slack-agent"));
   const instructionsFile = resolve(
     expandHome(typeof raw.instructionsFile === "string" && raw.instructionsFile ? raw.instructionsFile : join(stateDir, "instructions.md")),
@@ -97,6 +106,7 @@ export function loadConfig(): Config {
     memoryShare: assertStringArray(raw, "memoryShare"),
     adapter,
     model,
+    effort: effort as Effort | null,
     stateDir,
     slack: {
       botToken: required("SLACK_BOT_TOKEN"),

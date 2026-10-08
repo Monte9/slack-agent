@@ -1,4 +1,5 @@
 import { query, type Options } from "@anthropic-ai/claude-agent-sdk";
+import type { Effort } from "../config.js";
 import { transcriptDirFor } from "../core/scope.js";
 import { readTranscriptLine } from "./claude-transcript.js";
 import type { AgentAdapter, RunRequest, RunResult, RunStats } from "./types.js";
@@ -16,7 +17,7 @@ function inputOf(usage: { input_tokens: number; cache_read_input_tokens?: number
   return usage.input_tokens + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
 }
 
-export function createClaudeAdapter(options: { model: string | null }): AgentAdapter {
+export function createClaudeAdapter(options: { model: string | null; effort: Effort | null }): AgentAdapter {
   async function runOnce(request: RunRequest, sessionId: string | undefined): Promise<RunResult> {
     let effort: string | undefined;
     const sdkOptions: Options = {
@@ -72,6 +73,7 @@ export function createClaudeAdapter(options: { model: string | null }): AgentAda
     };
     if (sessionId) sdkOptions.resume = sessionId;
     if (options.model) sdkOptions.model = options.model;
+    if (options.effort) sdkOptions.effort = options.effort;
 
     let resolvedSessionId = sessionId ?? "";
     let collected = "";

@@ -11,7 +11,7 @@ import { TurnRunner } from "./core/turn.js";
  */
 const [command, ...rest] = process.argv.slice(2);
 const config = loadConfigWithoutSlack();
-const adapter = createClaudeAdapter({ model: config.model });
+const adapter = createClaudeAdapter({ model: config.model, effort: config.effort });
 const runner = new TurnRunner(config, adapter, "mclaude");
 
 if (command === "scope") {

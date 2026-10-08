@@ -5,6 +5,7 @@
   "memoryShare": ["project_*", "reference_*"],
   "adapter": "claude",
   "model": null,
+  "effort": null,
   "stateDir": "~/.slack-agent",
   "instructionsFile": "~/.slack-agent/instructions.md",
   "policyFile": "~/.slack-agent/policy.json",
