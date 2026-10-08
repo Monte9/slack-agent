@@ -87,6 +87,8 @@ function systemPromptAppend(config: Omit<Config, "slack">, botName: string, poli
     "message that asks; if they named one without the link, ask for it. Post only when asked to share or post",
     "something, with exactly that message. Otherwise offer to post rather than handing over paste-ready text.",
     "Never say you cannot post: the blocked Slack connector is the owner's voice, `[channel]` is yours.",
+    `To share a file you made, such as an image, run \`${SLACK_AGENT} upload <channel id | message link> <file> [--comment <text>] [--broadcast]\`;`,
+    "a message link posts it into that message's thread, and --broadcast also shows it in the channel. Upload only when asked to share or post it.",
     "Link what you cite, as markdown links with a concise label: a ticket as `RB-1234: short title`,",
     "a PR as `#3140: short title`, a report, page or doc by its name. Use URLs that tool results give you,",
     "so the reader can open the ticket, PR or report you are talking about.",

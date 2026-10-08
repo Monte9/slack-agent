@@ -54,7 +54,8 @@ flowchart TB
 - **On your Mac, not a server.** Socket Mode means there is no public URL, and the Mac stays awake on
   AC power so the connection holds.
 - **One ongoing session.** Every mention joins it in order, it survives restarts, and it reads the
-  thread before answering. For more, `slack-agent read` searches and reads the channels it is in.
+  thread before answering. For more, `slack-agent read` searches and reads the channels it is in,
+  and `slack-agent upload` posts a file it made (it needs the `files:write` scope).
 - **Only the memory you share.** Sessions start in a workspace that links in the memory files matching
   `memoryShare`, then do their work in your repo.
 - **Your rules.** A policy file decides which tools it can use and who can trigger them, and replies

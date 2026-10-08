@@ -21,6 +21,7 @@
     "status": "tsx src/cli.ts status",
     "watch": "tsx src/watch.ts",
     "read": "tsx src/read.ts",
+    "upload": "tsx src/upload.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts"
   },

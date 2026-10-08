@@ -7,6 +7,7 @@
 #   slack-agent scope                             rebuild the workspace and list the memory it shares
 #   slack-agent watch                             mentions, turns, tool calls and errors as they happen
 #   slack-agent read channels|history|thread|search   Slack as the bot sees it, for a turn that needs more than its thread
+#   slack-agent upload <channel | message link> <file> [--comment <text>] [--broadcast]   post a local file as the bot
 set -euo pipefail
 root="$(cd "$(dirname "$(readlink "$0" || echo "$0")")/.." && pwd)"
 cd "$root"
@@ -18,11 +19,11 @@ case "${1:-}" in
   dev)
     exec pnpm dev
     ;;
-  ask|scope|watch|read)
+  ask|scope|watch|read|upload)
     exec pnpm -s "$1" "${@:2}"
     ;;
   *)
-    sed -n '2,9p' "$0" | sed 's/^# \{0,3\}//'
+    sed -n '2,10p' "$0" | sed 's/^# \{0,3\}//'
     exit 2
     ;;
 esac
