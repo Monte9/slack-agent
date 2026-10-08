@@ -1,5 +1,5 @@
 {
-  "$comment": "Rules are checked top to bottom; the first match decides. Unmatched tools are allowed for everyone on the allowlist. `match` is a tool name with * wildcards, or Tool(argument*) to match a command prefix or file path. `allow` is nobody, owner or everyone.",
+  "$comment": "Rules are checked top to bottom; the first match decides. Unmatched tools are allowed for everyone on the allowlist. `match` is a tool name with * wildcards, or Tool(argument*) to match a command prefix or file path. A Bash(...) rule is checked against each command a line runs (after &&, ;, |, inside $(...)), and the line is refused if any of them is. `allow` is nobody, owner or everyone.",
   "rules": [
     { "match": "mcp__claude_ai_Gmail__*", "allow": "nobody", "reason": "personal mail stays out of Slack" },
     { "match": "mcp__claude_ai_Google_Calendar__*", "allow": "nobody", "reason": "personal calendar stays out of Slack" },

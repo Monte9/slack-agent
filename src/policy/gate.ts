@@ -1,12 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import type { Gate, GateDecision } from "../agent/types.js";
+import { commandsOf } from "./commands.js";
 
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 export type Allow = "nobody" | "owner" | "everyone";
 
 export interface Rule {
-  /** A tool name with `*` wildcards, or `Tool(argument*)` to match a command prefix or a file path. */
+  /**
+   * A tool name with `*` wildcards, or `Tool(argument*)` to match a command prefix or a file path.
+   * A `Bash(…)` pattern is matched against each command a line runs, not only the first.
+   */
   match: string;
   allow: Allow;
   reason?: string;
@@ -42,17 +46,35 @@ export function ruleMatches(rule: Rule, toolName: string, input: Record<string, 
   return toolMatches(tool, toolName) && globToRegExp(argument).test(argumentOf(toolName, input));
 }
 
+/** What the rules judge: each command a Bash line runs, or the call itself for any other tool. */
+function subjectsOf(toolName: string, input: Record<string, unknown>): Record<string, unknown>[] {
+  if (toolName !== "Bash") return [input];
+  const commands = commandsOf(String(input.command ?? ""));
+  return commands.length > 0 ? commands.map((command) => ({ ...input, command })) : [input];
+}
+
+/**
+ * The first matching rule decides each subject, and a call is refused when any subject is, so an
+ * owner-only `git push` earlier in the rules can't let a refused `rm -rf` later in the same line through.
+ */
 export function decide(
   policy: Policy,
   toolName: string,
   input: Record<string, unknown>,
   isOwner: boolean,
 ): { rule?: Rule; decision: GateDecision } {
-  const rule = policy.rules.find((r) => ruleMatches(r, toolName, input));
-  if (!rule || rule.allow === "everyone" || (rule.allow === "owner" && isOwner)) return { rule, decision: { allow: true } };
-  const why = rule.reason ? ` (${rule.reason})` : "";
-  const reason = rule.allow === "nobody" ? `Not allowed from Slack${why}.` : `Only the owner can do that${why}. Ask them to run it.`;
-  return { rule, decision: { allow: false, reason } };
+  let allowedBy: Rule | undefined;
+  for (const subject of subjectsOf(toolName, input)) {
+    const rule = policy.rules.find((r) => ruleMatches(r, toolName, subject));
+    if (!rule || rule.allow === "everyone" || (rule.allow === "owner" && isOwner)) {
+      allowedBy ??= rule;
+      continue;
+    }
+    const why = rule.reason ? ` (${rule.reason})` : "";
+    const reason = rule.allow === "nobody" ? `Not allowed from Slack${why}.` : `Only the owner can do that${why}. Ask them to run it.`;
+    return { rule, decision: { allow: false, reason } };
+  }
+  return { rule: allowedBy, decision: { allow: true } };
 }
 
 /** Read on every turn, so edits to the file apply without a restart. A missing file means no rules. */
