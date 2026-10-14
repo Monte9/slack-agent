@@ -77,11 +77,17 @@ export function decide(
   return { rule: allowedBy, decision: { allow: true } };
 }
 
-/** Read on every turn, so edits to the file apply without a restart. A missing file means no rules. */
+/**
+ * Read on every turn, so edits to the file apply without a restart. Throws when the file or its
+ * `rules` list is missing, since no rules would let every tool through: the turn refuses instead.
+ */
 export function loadPolicy(path: string): Policy {
-  if (!existsSync(path)) return { rules: [] };
+  if (!existsSync(path)) {
+    throw new Error(`No policy file at ${path}, so no turn runs. Copy policy.example.json there.`);
+  }
   const raw = JSON.parse(readFileSync(path, "utf8")) as Partial<Policy>;
-  const rules = Array.isArray(raw.rules) ? raw.rules : [];
+  if (!Array.isArray(raw.rules)) throw new Error(`${path} needs a "rules" list, so no turn runs.`);
+  const rules = raw.rules;
   for (const rule of rules) {
     if (typeof rule.match !== "string" || !["nobody", "owner", "everyone"].includes(rule.allow)) {
       throw new Error(`${path}: each rule needs a "match" string and an "allow" of nobody, owner or everyone`);

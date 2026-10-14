@@ -22,7 +22,7 @@ turns count toward your Claude plan's limits.
    From a manifest*) and install it to your workspace.
 3. Copy `.env.example` to `.env` and add the bot and app tokens; the file says where each one is.
 4. Copy `config.example.json` to `config.json` and set `project` (your repo), `owner` (your Slack user
-   id) and `allowlist`. Then copy the default policy, since without one every tool is allowed:
+   id) and `allowlist`. Then copy the default policy, since the bot refuses every turn without one:
    ```bash
    mkdir -p ~/.slack-agent && cp policy.example.json ~/.slack-agent/policy.json
    ```
@@ -70,7 +70,8 @@ flowchart TB
 - Only allowlisted users get answers, and the sender comes from Slack, never from the message text.
 - It posts in another channel only when the sender links that channel in the message that asks.
 - It runs with your credentials and can read any file you can, so keep the allowlist to people you trust.
-- Memory is read-only, and the policy is checked before every tool call.
+- Memory is read-only, and the policy is checked before every tool call. Without a policy file, no
+  turn runs.
 - Tokens and `config.json` are gitignored.
 
 ## License

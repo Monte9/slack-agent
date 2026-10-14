@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { test } from "node:test";
-import { decide, describePolicy, ruleMatches, type Policy } from "./gate.js";
+import { decide, describePolicy, loadPolicy, ruleMatches, type Policy } from "./gate.js";
 
 const policy: Policy = {
   rules: [
@@ -79,6 +82,15 @@ test("a rule's text inside quotes or a heredoc doesn't trigger it", () => {
 
 test("unmatched tools are allowed for everyone", () => {
   assert.equal(decide(policy, "mcp__claude_ai_Mixpanel__Get-Report", {}, false).decision.allow, true);
+});
+
+test("a missing policy file, or one without a rules list, refuses the turn instead of allowing every tool", () => {
+  const dir = mkdtempSync(join(tmpdir(), "slack-agent-policy-"));
+  assert.throws(() => loadPolicy(join(dir, "policy.json")), /No policy file/);
+  writeFileSync(join(dir, "typo.json"), JSON.stringify({ rule: [{ match: "Bash(rm -rf*)", allow: "nobody" }] }));
+  assert.throws(() => loadPolicy(join(dir, "typo.json")), /needs a "rules" list/);
+  writeFileSync(join(dir, "empty.json"), JSON.stringify({ rules: [] }));
+  assert.deepEqual(loadPolicy(join(dir, "empty.json")), { rules: [] });
 });
 
 test("the prose summary names both tiers", () => {

@@ -26,7 +26,7 @@ export interface Config {
   instructionsFile: string;
   /** Replies longer than this are sent back to the agent once to be shortened. */
   maxReplyWords: number;
-  /** The tool policy: who may use which tools. Read on every turn. See policy.example.json. */
+  /** The tool policy: who may use which tools. Read on every turn, and required. See policy.example.json. */
   policyFile: string;
   slack: {
     botToken: string;
